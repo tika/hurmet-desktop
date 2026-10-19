@@ -1,0 +1,99 @@
+/* Hurmet Desktop shell chrome.
+ *
+ * Loaded by electron/main.cjs on top of the site's own stylesheet. This
+ * styles only the app chrome — menu bar, dropdown menus — never the
+ * document, whose typography is the product's own print design.
+ */
+
+/* ---- Toolbar ---------------------------------------------------------- */
+/* The ProseMirror menu bar doubles as the native Mac toolbar: it drags the
+   window (hiddenInset title bar) and its left padding clears the traffic
+   lights. It uses the platform UI font, distinct from the document face. */
+
+.ProseMirror-menubar {
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+  padding: 10px 16px 8px 78px !important;
+  background: #f6f6f6;
+  color: #444;
+  border-bottom: 1px solid #e2e2e2;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  font-size: 13px;
+}
+
+.ProseMirror-menubar * {
+  -webkit-app-region: no-drag;
+}
+
+.ProseMirror-menubar .ProseMirror-menuitem button {
+  padding: 4px 6px;
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: 5px;
+}
+
+.ProseMirror-menubar .ProseMirror-menuitem button:hover {
+  background: rgb(0 0 0 / 0.06);
+}
+
+/* The math-insert buttons are styled upstream as a segmented control with
+   hard 1px borders and oversized glyphs. In the native toolbar they get the
+   same treatment as every other button. */
+.ProseMirror-menubar button.math-button,
+.ProseMirror-menubar button.mb-left,
+.ProseMirror-menubar button.math-dropdown,
+.ProseMirror-menubar button.md-right {
+  border: none;
+  margin-left: 0;
+  font-size: 13px;
+  padding: 4px 6px;
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: 5px;
+}
+
+.ProseMirror-menubar .ProseMirror-menu-active {
+  background: rgb(0 0 0 / 0.12);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ProseMirror-menubar .ProseMirror-menuitem button {
+    transition: background-color 120ms ease-out, color 120ms ease-out;
+  }
+}
+
+/* ---- Dropdown and submenu panels -------------------------------------- */
+
+.ProseMirror-menu-dropdown-menu,
+.ProseMirror-menu-submenu {
+  background: #fff;
+  color: #333;
+  border: 1px solid rgb(0 0 0 / 0.12);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.08),
+    0 8px 24px rgb(0 0 0 / 0.14);
+}
+
+.ProseMirror-menu-dropdown-item {
+  padding: 5px 12px 5px 8px;
+  border-radius: 4px;
+}
+
+.ProseMirror-menu-dropdown-item:hover {
+  background: rgb(0 0 0 / 0.07);
+}
+
+.ProseMirror-menu-dropdown-menu .ProseMirror-menu-disabled,
+.ProseMirror-menu-submenu .ProseMirror-menu-disabled {
+  opacity: 0.4;
+}
+
+/* Web-only chrome, hidden for the desktop app. */
+nav,
+#promotion,
+#copyright {
+  display: none !important;
+}
