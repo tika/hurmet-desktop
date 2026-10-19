@@ -3,6 +3,7 @@ import { codeJar, selectedText, textBeforeCursor, textAfterCursor } from "./code
 import { findWordAtClickPos, positionOfDefinition } from "./findDefinition"
 import hurmet from "./hurmet"
 import temml from "./temml.js"
+import { TextSelection } from "prosemirror-state"
 
 const commaRegEx = /"[^"]*"|[0-9]+,[0-9]+|[A-Za-zıȷ\u0391-\u03D5\uD835][A-Za-z0-9_ıȷ\u0391-\u03D5\uD835\uDC00-\uDFFF]/g
 const dotRegEx = /"[^"]*"|[0-9]+\.[0-9]+|[A-Za-zıȷ\u0391-\u03D5\uD835][A-Za-z0-9_ıȷ\u0391-\u03D5\uD835\uDC00-\uDFFF]/g
@@ -34,14 +35,25 @@ const commaFromDotForDisplay = (str) => {
 }
 
 export function openMathPrompt(options) {
+  if (options.dom.querySelector(".math-code")) { return }
   const wrapper = options.dom.appendChild(document.createElement("div"))
-  wrapper.className = "math-code"
+  wrapper.className = "math-code math-editor"
+  wrapper.setAttribute("role", "group")
+  options.dom.classList.add("math-editing")
   wrapper.parentNode.firstChild.style.display = "none"
 
-  const close = () => {
+  const close = (focus = false) => {
+    jar.destroy()
     if (wrapper.parentNode) {
       wrapper.parentNode.firstChild.removeAttribute("style")
       wrapper.parentNode.removeChild(wrapper)
+    }
+    options.dom.classList.remove("math-editing")
+    if (focus) {
+      const view = options.outerView
+      view.dispatch(view.state.tr.setSelection(
+        TextSelection.near(view.state.doc.resolve(view.state.selection.to))))
+      view.focus()
     }
   }
 
@@ -51,8 +63,32 @@ export function openMathPrompt(options) {
     ? options.outerView.state.doc.attrs.decimalFormat.slice(-1)
     : ""
 
+  const header = wrapper.appendChild(document.createElement("div"))
+  header.className = "math-editor-header"
+  const title = header.appendChild(document.createElement("strong"))
+  title.textContent = isCalculation ? "Calculation" : "LaTeX equation"
+  wrapper.setAttribute("aria-label", title.textContent)
+  const description = header.appendChild(document.createElement("p"))
+  description.textContent = isCalculation
+    ? "Use ?? for unit conversions, e.g. 14 'm' + 4 'ft' = ?? m"
+    : "Typesets math without calculating values."
+  const sourceLabel = wrapper.appendChild(document.createElement("label"))
+  sourceLabel.id = "math-source-label"
+  sourceLabel.textContent = isCalculation ? "Expression" : "LaTeX source"
+  sourceLabel.className = "math-editor-label"
   const editor = wrapper.appendChild(document.createElement("div"))
+  editor.className = "math-source"
+  editor.id = "math-source"
+  sourceLabel.htmlFor = editor.id
+  editor.setAttribute("role", "textbox")
+  editor.setAttribute("aria-labelledby", sourceLabel.id)
+  editor.setAttribute("aria-multiline", "true")
   const jar = codeJar(editor, true)
+  jar.updateOptions({ catchTab: false })
+  editor.tabIndex = 0
+  // CodeJar suppresses the outline; the editing surface supplies its focus ring.
+  editor.style.removeProperty("outline")
+  sourceLabel.addEventListener("click", () => editor.focus())
 
   // Populate the editor.
   if (options.attrs) {
@@ -68,21 +104,33 @@ export function openMathPrompt(options) {
   const L = jar.toString().length
   jar.restore({ start: L, end: L, dir: undefined })
 
-  const closeIfNotHint = _ => {
-    // Close, unless the math zone was blurred to click on a hint.
-    if (document.getElementsByClassName("ProseMirror-prompt").length === 0) {
-      close()
-    }
-  }
-  editor.addEventListener("blur", closeIfNotHint )
-
+  const guidance = wrapper.appendChild(document.createElement("p"))
+  guidance.id = "math-editor-guidance"
+  guidance.className = "math-editor-guidance"
+  guidance.setAttribute("role", "status")
+  editor.setAttribute("aria-describedby", guidance.id)
+  const previewLabel = wrapper.appendChild(document.createElement("div"))
+  previewLabel.className = "math-editor-label"
+  previewLabel.textContent = "Preview"
   const mathDisplay = wrapper.appendChild(document.createElement("div"))
   mathDisplay.setAttribute("class", "math-display")
+  mathDisplay.setAttribute("aria-label", "Equation preview")
 
   const renderMath = function(code) {
     // eslint-disable-next-line no-useless-assignment
     let tex = ""
     let isUDF = false
+    editor.removeAttribute("aria-invalid")
+    guidance.textContent = isCalculation && /\n\s*[^\n=]+\s*=/.test(code) &&
+      !/^\s*(function|module|draw)\b/.test(code)
+      ? "For successive calculations, put each expression in a separate calculation cell."
+      : ""
+    if (!code.trim()) {
+      mathDisplay.textContent = "Your equation will appear here."
+      mathDisplay.classList.add("math-preview-empty")
+      return
+    }
+    mathDisplay.classList.remove("math-preview-empty")
     if (isCalculation) {
       // Check if an auto-correct is needed (after a user types a space.)
       const selText = selectedText(editor)
@@ -107,18 +155,22 @@ export function openMathPrompt(options) {
         temml.render(tex, mathDisplay, {
           displayMode: options.attrs.displayMode,
           wrap: "=",
-          errorColor: "#fff"
+          throwOnError: true,
+          errorColor: "#b42318"
         })
-      // eslint-disable-next-line no-unused-vars
       } catch (err) {
         while (mathDisplay.lastChild) {
           mathDisplay.removeChild(mathDisplay.lastChild)
         }
-        mathDisplay.textContent = tex
+        mathDisplay.textContent = "Preview unavailable."
+        editor.setAttribute("aria-invalid", "true")
+        guidance.textContent = String(err.message || "Check the equation source.")
       }
+    } else {
+      mathDisplay.textContent = "Function definition — evaluated when applied."
     }
   }
-  if (jar.toString().length > 0) { renderMath(jar.toString()) }
+  renderMath(jar.toString())
 
   editor.addEventListener("input", e => {
     renderMath(jar.toString())
@@ -145,12 +197,25 @@ export function openMathPrompt(options) {
       ? { tex: mathString }
       : hurmet.compile(mathString, formats)
     params.displayMode = options.attrs.displayMode
+    close()
     options.callback(params)
-    editor.removeEventListener('blur', close)
-    if (wrapper.parentNode) {
-      wrapper.remove()
-    }
   }
+
+  const footer = wrapper.appendChild(document.createElement("div"))
+  footer.className = "math-editor-footer"
+  const shortcuts = footer.appendChild(document.createElement("span"))
+  shortcuts.textContent = "Enter to apply · Shift Enter for a new line"
+  const actions = footer.appendChild(document.createElement("div"))
+  actions.className = "math-editor-actions"
+  const cancel = actions.appendChild(document.createElement("button"))
+  cancel.type = "button"
+  cancel.textContent = "Cancel"
+  cancel.addEventListener("click", () => close(true))
+  const apply = actions.appendChild(document.createElement("button"))
+  apply.type = "button"
+  apply.className = "math-editor-apply"
+  apply.textContent = "Apply"
+  apply.addEventListener("click", submit)
 
   editor.addEventListener("submit", e => {
     e.preventDefault()
@@ -158,14 +223,34 @@ export function openMathPrompt(options) {
   })
 
   editor.addEventListener("keydown", e => {
+    if (e.isComposing || e.keyCode === 229) { return }
     if (e.keyCode === 27) {
       // Esc. Close without updating.
       e.preventDefault()
-      close()
+      close(true)
+    } else if (e.keyCode === 13 && e.shiftKey && !e.defaultPrevented) {
+      // Keep a real newline in the source instead of a browser-generated <br>.
+      e.preventDefault()
+      const { start, end } = jar.save()
+      const text = jar.toString()
+      const before = text.slice(0, start)
+      const indent = /(?:^|\n)([ \t]*)[^\n]*$/.exec(before)?.[1] || ""
+      const newline = "\n" + indent
+      jar.updateCode(before + newline + text.slice(end))
+      const next = start + newline.length
+      jar.restore({ start: next, end: next })
+      renderMath(jar.toString())
     } else if (e.keyCode === 13 && !e.shiftKey) {
       // Submit upon Enter. (Shift-Enter creates a newline.)
       e.preventDefault()
       submit()
+    }
+  })
+
+  wrapper.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !event.defaultPrevented) {
+      event.preventDefault()
+      close(true)
     }
   })
 
@@ -187,4 +272,6 @@ export function openMathPrompt(options) {
       }
     }
   })
+
+  return close
 }

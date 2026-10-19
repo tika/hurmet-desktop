@@ -230,7 +230,6 @@ module.exports = async function smoke({ win, loadFile, wss }) {
 
     const sourcePoint = async text => win.webContents.executeJavaScript(`(() => {
       const editor = document.querySelector('.math-code [contenteditable]')
-      editor.style.minWidth = '240px'
       editor.focus()
       document.execCommand('insertText', false, ${JSON.stringify(text)})
       const rect = editor.getBoundingClientRect()
@@ -273,6 +272,129 @@ module.exports = async function smoke({ win, loadFile, wss }) {
       'x = 1\\,\\text{MPa}')
     await win.webContents.executeJavaScript(
       'document.querySelector(".math-code [contenteditable]").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))', true)
+
+    // Equation editing: visible source/preview, real Apply/Cancel clicks,
+    // keyboard access, and the multi-expression mistake from the user report.
+    const click = async selector => {
+      const point = await win.webContents.executeJavaScript(`(() => {
+        const target = document.querySelector(${JSON.stringify(selector)})
+        target.scrollIntoView({ block: 'center' })
+        const rect = target.getBoundingClientRect()
+        return { x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2) }
+      })()`, true)
+      win.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', clickCount: 1, ...point })
+      win.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...point })
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    await win.webContents.executeJavaScript(`(() => {
+      const view = window.view
+      const tr = view.state.tr.replaceWith(0, view.state.doc.content.size,
+        view.state.schema.nodes.paragraph.create())
+      tr.setSelection(view.state.selection.constructor.near(tr.doc.resolve(1)))
+      view.dispatch(tr)
+    })()`, true)
+    native('insertCalculation').click()
+    await new Promise(resolve => setTimeout(resolve, 100))
+    const setSource = async text => {
+      await win.webContents.executeJavaScript(`(() => {
+      const editor = document.querySelector('.math-source')
+      editor.focus()
+      editor.textContent = ${JSON.stringify(text)}
+      const range = document.createRange()
+      range.selectNodeContents(editor)
+      range.collapse(false)
+      getSelection().removeAllRanges()
+      getSelection().addRange(range)
+      editor.dispatchEvent(new Event('input', { bubbles: true }))
+      })()`, true)
+      await new Promise(resolve => setTimeout(resolve, 80))
+    }
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector(".math-preview-empty").textContent', true),
+      'Your equation will appear here.')
+    await setSource("E=14'm'\nE+4'ft'=?")
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector(".math-editor-guidance").textContent.includes("separate")', true),
+      true)
+    fs.writeFileSync(path.join(outDir, 'math-multiline-guidance.png'),
+      (await win.webContents.capturePage()).toPNG())
+    await setSource("14 'm' + 4 'ft' = ?? m")
+    results.mathEditor = await win.webContents.executeJavaScript(`(() => {
+      const panel = document.querySelector('.math-editor')
+      return {
+        label: panel.getAttribute('aria-label'),
+        sourceLabel: document.querySelector('#math-source-label').textContent,
+        previewStatic: getComputedStyle(panel.querySelector('.math-display')).position === 'static',
+        width: panel.getBoundingClientRect().width,
+        hasMath: !!panel.querySelector('.math-display math'),
+        warningCleared: !panel.querySelector('.math-editor-guidance').textContent
+      }
+    })()`, true)
+    assert.equal(results.mathEditor.label, 'Calculation')
+    assert.equal(results.mathEditor.sourceLabel, 'Expression')
+    assert.equal(results.mathEditor.previewStatic, true)
+    assert.ok(results.mathEditor.width >= 400)
+    assert.equal(results.mathEditor.hasMath, true)
+    assert.equal(results.mathEditor.warningCleared, true)
+    fs.writeFileSync(path.join(outDir, 'math-calculation-editor.png'),
+      (await win.webContents.capturePage()).toPNG())
+    win.webContents.debugger.attach('1.3')
+    const accessibility = await win.webContents.debugger.sendCommand('Accessibility.getFullAXTree')
+    results.mathAccessibleSource = accessibility.nodes.some(node =>
+      node.role?.value === 'textbox' && node.name?.value === 'Expression')
+    win.webContents.debugger.detach()
+    assert.equal(results.mathAccessibleSource, true)
+    // Tab leaves the source, rather than inserting an invisible tab character.
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' })
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' })
+    await new Promise(resolve => setTimeout(resolve, 100))
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.activeElement.textContent', true), 'Cancel')
+    await click('.math-editor-apply')
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector("#editor-content").textContent.includes("15.2192") && ' +
+      '!document.querySelector(".math-editor")', true), true)
+    await click('.hurmet-calc')
+    await setSource('999 = ?')
+    await click('.math-editor-actions button')
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector("#editor-content").textContent.includes("15.2192") && ' +
+      '!document.querySelector(".math-editor")', true), true)
+    await click('.hurmet-calc')
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector(".math-source").textContent', true), "14 'm' + 4 'ft' = ?? m")
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' })
+    await new Promise(resolve => setTimeout(resolve, 100))
+    assert.equal(await win.webContents.executeJavaScript(
+      '!document.querySelector(".math-editor") && document.activeElement === window.view.dom',
+      true), true)
+
+    native('insertTeX').click()
+    await new Promise(resolve => setTimeout(resolve, 100))
+    await setSource('\\unknownHurmetCommand')
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector(".math-source").getAttribute("aria-invalid") === "true" && ' +
+      '!!document.querySelector(".math-editor-guidance").textContent', true), true)
+    await setSource('\\sigma = \\frac{M y}{I}')
+    fs.writeFileSync(path.join(outDir, 'math-latex-editor.png'),
+      (await win.webContents.capturePage()).toPNG())
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector(".math-editor").getAttribute("aria-label")', true),
+      'LaTeX equation')
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Enter', modifiers: ['shift'] })
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Enter', modifiers: ['shift'] })
+    await new Promise(resolve => setTimeout(resolve, 100))
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector(".math-source").textContent.includes("\\n")', true), true)
+    await setSource('\\sigma = \\frac{M y}{I}')
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' })
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' })
+    await new Promise(resolve => setTimeout(resolve, 100))
+    assert.equal(await win.webContents.executeJavaScript(
+      '!!document.querySelector(".hurmet-tex mfrac")', true), true)
+    results.mathEditorWorks = true
 
     await win.webContents.executeJavaScript(`(() => {
       const view = window.view
@@ -441,7 +563,7 @@ module.exports = async function smoke({ win, loadFile, wss }) {
     await win.webContents.executeJavaScript(
       'document.querySelector("button.desktop-insert-menu").click()', true)
     results.layoutChecks = []
-    for (const [width, zoom] of [[540, 1], [1100, 2], [1440, 1]]) {
+    for (const [width, zoom] of [[540, 1], [1100, 2], [640, 2], [1440, 1]]) {
       win.setSize(width, 820)
       win.webContents.setZoomFactor(zoom)
       await new Promise(resolve => setTimeout(resolve, 200))
@@ -485,6 +607,36 @@ module.exports = async function smoke({ win, loadFile, wss }) {
       assert.equal(dropdownFits, true, `Insert menu fits at ${width}px / ${zoom}x`)
       fs.writeFileSync(path.join(outDir, `toolbar-${width}-${zoom}x.png`),
         (await win.webContents.capturePage()).toPNG())
+      await win.webContents.executeJavaScript(`(() => {
+        const view = window.view
+        const tr = view.state.tr.replaceWith(0, view.state.doc.content.size,
+          view.state.schema.nodes.paragraph.create())
+        tr.setSelection(view.state.selection.constructor.near(tr.doc.resolve(1)))
+        view.dispatch(tr)
+      })()`, true)
+      native('insertCalculation').click()
+      await setSource("14 'm' + 4 'ft' = ?? m")
+      const editorFits = await win.webContents.executeJavaScript(`(() => {
+        const panel = document.querySelector('.math-editor')
+        const fits = () => [...panel.querySelectorAll('.math-source, button')].every(node => {
+          const rect = node.getBoundingClientRect()
+          return rect.left >= 0 && rect.right <= innerWidth && rect.width >= 24 &&
+            rect.height >= 24
+        })
+        const ltr = fits()
+        document.documentElement.dir = 'rtl'
+        const rtl = fits()
+        document.documentElement.removeAttribute('dir')
+        panel.scrollIntoView({ block: 'center' })
+        return { ltr, rtl }
+      })()`, true)
+      assert.deepEqual(editorFits, { ltr: true, rtl: true },
+        'Equation editor fits at ' + width + 'px / ' + zoom + 'x')
+      fs.writeFileSync(path.join(outDir, `math-editor-${width}-${zoom}x.png`),
+        (await win.webContents.capturePage()).toPNG())
+      await win.webContents.executeJavaScript(
+        'document.querySelector(".math-editor-actions button").click(); window.scrollTo(0, 0)',
+        true)
     }
     win.setSize(1100, 820)
     win.webContents.setZoomFactor(1)

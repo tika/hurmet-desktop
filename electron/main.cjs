@@ -64,7 +64,8 @@ function fontOverrideCss({ body, code }) {
       `font-variant: normal; letter-spacing: normal; }\n`
   }
   if (code) {
-    css += `.ProseMirror code, .ProseMirror pre, .ProseMirror pre code, .hmt-code { ` +
+    css += `.ProseMirror code, .ProseMirror pre, .ProseMirror pre code, .hmt-code, ` +
+      `.ProseMirror .math-editor .math-source { ` +
       `font-family: "${code}", Consolas, "Liberation Mono", Courier, monospace; }\n`
   }
   return css

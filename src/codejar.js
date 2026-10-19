@@ -32,6 +32,7 @@ export const codeJar = (editor, isMathPrompt) => {
   const listeners = []
   let callback
   let prev
+  let destroyed = false
 
   editor.setAttribute("contenteditable", "plaintext-only")
   editor.setAttribute("spellcheck", "false")
@@ -50,6 +51,7 @@ export const codeJar = (editor, isMathPrompt) => {
   if (isLegacy) editor.setAttribute("contenteditable", "true")
 
   const debounceHighlight = debounce(() => {
+    if (destroyed) return
     const pos = save()
     doHighlight(editor)
     restore(pos)
@@ -62,7 +64,7 @@ export const codeJar = (editor, isMathPrompt) => {
 
   ;on("keydown", event => {
     // The next five lines are Hurmet customization. Not part of vanilla CodeJar.
-    if (isMathPrompt && event.keyCode === 13 && !event.shiftKey) return
+    if (isMathPrompt && event.keyCode === 13) return
     if (isMathPrompt && event.keyCode === 66 && event.ctrlKey) {
       // Make the previous letter bold.
       const preText = textBeforeCursor(editor)
@@ -429,6 +431,7 @@ export const codeJar = (editor, isMathPrompt) => {
     save,
     restore,
     destroy() {
+      destroyed = true
       for (let [type, fn] of listeners) {
         editor.removeEventListener(type, fn)
       }

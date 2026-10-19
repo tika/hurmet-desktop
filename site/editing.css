@@ -88,3 +88,128 @@
 @media print {
   .document-outline { display: none; }
 }
+
+/* Keep source and preview in the document flow, without a floating tooltip. */
+.ProseMirror .math-editing.ProseMirror-selectednode { outline: none; }
+
+.ProseMirror .math-code.math-editor {
+  display: block;
+  box-sizing: border-box;
+  inline-size: min(560px, 100%);
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  margin-block: 12px 20px;
+  padding: 16px;
+  border: 1px solid #d4d4d4;
+  border-radius: 12px;
+  background: #fff;
+  color: #242424;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.06);
+  font: 13px / 1.45 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  text-align: start;
+  white-space: normal;
+}
+
+.math-editor-header strong { font-size: 15px; }
+
+.ProseMirror .math-editor-header p {
+  margin: 4px 0 20px;
+  font: inherit;
+  color: #626262;
+}
+
+.math-editor .math-editor-label {
+  display: block;
+  margin-block: 0 8px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.math-editor .math-source {
+  box-sizing: border-box;
+  padding: 12px;
+  min-block-size: 76px;
+  max-block-size: 240px;
+  border: 1px solid #d4d4d4;
+  border-radius: 6px;
+  background: #f8f8f8;
+  color: #242424;
+  font: 14px / 1.65 ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  cursor: text;
+  margin-block-end: 20px;
+}
+
+.math-editor .math-source:focus-visible {
+  outline: 2px solid #1769c2;
+  outline-offset: 1px;
+}
+
+.ProseMirror .math-editor-guidance {
+  margin: -8px 0 20px;
+  color: #86500a;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+
+.math-editor-guidance:empty { display: none; }
+
+.math-editor .math-display {
+  position: static;
+  background: transparent;
+  color: #242424;
+  min-block-size: 44px;
+  margin: 0;
+  padding: 8px 0 16px;
+  overflow-x: auto;
+  font-size: 17px;
+  border-radius: 0;
+}
+
+.math-editor .math-display::before { content: none; }
+.math-editor .math-preview-empty { color: #6b6b6b; font-size: 13px; }
+
+.math-editor-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  border-block-start: 1px solid #ededed;
+  padding-block-start: 12px;
+}
+
+.math-editor-footer > span { font-size: 11px; color: #626262; }
+.math-editor-actions { display: flex; gap: 8px; margin-inline-start: auto; }
+
+.math-editor-actions button {
+  min-block-size: 32px;
+  padding: 6px 14px;
+  font: inherit;
+  color: #333;
+  border: 1px solid #d4d4d4;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.math-editor-actions .math-editor-apply {
+  background: #1769c2;
+  border-color: #1769c2;
+  color: #fff;
+}
+
+.math-editor-actions button:focus-visible {
+  outline: 2px solid #1769c2;
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .math-editor-actions button:hover { background: #f0f0f0; }
+  .math-editor-actions .math-editor-apply:hover { background: #12579f; }
+}
+
+@media (forced-colors: active) {
+  .math-editor .math-source:focus-visible,
+  .math-editor-actions button:focus-visible,
+  .document-outline button:focus-visible { outline-color: Highlight; }
+}

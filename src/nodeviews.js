@@ -23,7 +23,7 @@ export class CalcView {
     // A CalcView node is a ProseMirror atom. It does not enable direct ProseMirror editing.
     // Instead we temporarily open a text editor instance in the node location.
     // Then, we update all dependent calculations only if the node is submitted.
-    openMathPrompt({
+    this.closeMathPrompt = openMathPrompt({
       encoding: "HurmetMath",
       attrs: attrs,
       outerView: this.outerView,
@@ -42,8 +42,10 @@ export class CalcView {
   }
 
   deselectNode() {
+    this.closeMathPrompt?.()
     this.dom.classList.remove("ProseMirror-selectednode")
   }
+  destroy() { this.closeMathPrompt?.() }
   stopEvent() { return true }
 }
 
@@ -55,9 +57,10 @@ export class TexView {
   }
 
   selectNode() {
+    if (this.dom.querySelector(".math-code")) { return }
     this.dom.classList.add("ProseMirror-selectednode")
     const attrs = this.node.attrs
-    openMathPrompt({
+    this.closeMathPrompt = openMathPrompt({
       // Create a user interface for TeX that is similar to CalcView.
       // The need for a text editor instance is not as great here as it is in CalcView,
       // but I want the look and feel to be similar for both.
@@ -76,8 +79,10 @@ export class TexView {
   }
 
   deselectNode() {
+    this.closeMathPrompt?.()
     this.dom.classList.remove("ProseMirror-selectednode")
   }
+  destroy() { this.closeMathPrompt?.() }
   stopEvent() { return true }
 }
 
