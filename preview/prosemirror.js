@@ -59324,12 +59324,22 @@ function textStyle(items) {
       // Keep arrow keys in the platform select instead of moving along the toolbar.
       select.addEventListener("keydown", event => event.stopPropagation());
       return { dom: select, update(state) {
-        const current = styles.filter(([id]) => items[id].spec.active?.(state));
-        select.value = current.length === 1 ? current[0][0] : "mixed";
+        const selected = new Set();
+        state.doc.nodesBetween(state.selection.from, state.selection.to, node => {
+          if (node.isTextblock) {
+            const name = node.type.name;
+            selected.add(name === "heading" ? `makeHead${node.attrs.level}` :
+              name === "paragraph" ? "makeParagraph" :
+                name === "code_block" ? "makeCodeBlock" : "mixed");
+            return false
+          }
+        });
+        const current = selected.size === 1 ? selected.values().next().value : "mixed";
+        select.value = current;
         for (const option of select.options) {
           const spec = items[option.value]?.spec;
           option.disabled = !spec ||
-            (!spec.active?.(state) && !!(spec.enable && !spec.enable(state)));
+            (option.value !== current && !!(spec.enable && !spec.enable(state)));
         }
         return true
       } }

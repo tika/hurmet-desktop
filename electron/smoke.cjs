@@ -8,6 +8,8 @@ const assert = require('node:assert/strict')
 const { Menu, dialog } = require('electron')
 
 module.exports = async function smoke({ win, loadFile, wss }) {
+  // Keep renderer checks responsive while another app has keyboard focus.
+  win.webContents.setBackgroundThrottling(false)
   const outDir = path.join(__dirname, '..', '.amp', 'in', 'artifacts')
   fs.mkdirSync(outDir, { recursive: true })
   const results = {}
@@ -50,6 +52,44 @@ module.exports = async function smoke({ win, loadFile, wss }) {
       'typeof window.showSaveFilePicker', true)
     results.serviceWorkerBlocked = await win.webContents.executeJavaScript(
       '!("serviceWorker" in navigator) || navigator.serviceWorker.controller === null', true)
+
+    results.startingDocument = await win.webContents.executeJavaScript(`(() => {
+      const doc = window.view.state.doc
+      return {
+        paragraphs: doc.childCount,
+        firstNode: doc.firstChild.type.name,
+        text: doc.textContent,
+        style: document.querySelector('.desktop-text-style').value
+      }
+    })()`, true)
+    assert.deepEqual(results.startingDocument, {
+      paragraphs: 1, firstNode: 'paragraph', text: '', style: 'makeParagraph'
+    }, 'New documents start with a single empty paragraph')
+    fs.writeFileSync(path.join(outDir, 'empty-startup.png'),
+      (await win.webContents.capturePage()).toPNG())
+
+    results.selectionStyles = await win.webContents.executeJavaScript(`(() => {
+      const view = window.view
+      const original = view.state.doc
+      const { paragraph, heading } = view.state.schema.nodes
+      const readStyle = nodes => {
+        const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, nodes)
+        tr.setSelection(view.state.selection.constructor.create(tr.doc, 1, tr.doc.content.size - 1))
+        view.dispatch(tr)
+        return document.querySelector('.desktop-text-style').value
+      }
+      const styles = [
+        readStyle([paragraph.create(), paragraph.create()]),
+        readStyle([heading.create({ level: 2 }), heading.create({ level: 2 })]),
+        readStyle([paragraph.create(), heading.create({ level: 2 })])
+      ]
+      const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, original.content)
+      tr.setSelection(view.state.selection.constructor.create(tr.doc, 1))
+      view.dispatch(tr)
+      window.__hurmetBaseline = view.state.doc
+      return styles
+    })()`, true)
+    assert.deepEqual(results.selectionStyles, ['makeParagraph', 'makeHead2', 'mixed'])
 
     // Open a real document through the shell pipeline, unless asked to
     // capture the empty launch state. Always use a scratch copy: autosave
@@ -305,6 +345,6 @@ module.exports = async function smoke({ win, loadFile, wss }) {
     fs.writeFileSync(path.join(outDir, 'smoke-results.json'), JSON.stringify(results, null, 2))
     appQuit()
   } catch (err) {
-    fail(err.message)
+    fail(err.stack || err.message)
   }
 }
