@@ -91,6 +91,58 @@ module.exports = async function smoke({ win, loadFile, wss }) {
     })()`, true)
     assert.deepEqual(results.selectionStyles, ['makeParagraph', 'makeHead2', 'mixed'])
 
+    // Outline navigation uses document positions, including on long notes.
+    results.outline = await win.webContents.executeJavaScript(`(() => {
+      const view = window.view
+      const original = view.state.doc
+      const { paragraph, heading } = view.state.schema.nodes
+      const trigger = document.querySelector('[aria-label="Document outline"]')
+      trigger.click()
+      const empty = document.querySelector('.document-outline').textContent
+        .includes('Add headings')
+      document.querySelector('.editing-panel-close').click()
+      const nodes = [heading.create({ level: 1 }, view.state.schema.text('Circuit analysis')),
+        ...Array.from({ length: 60 }, () => paragraph.create(null,
+          view.state.schema.text('Measurements and calculations'))),
+        heading.create({ level: 3 }, view.state.schema.text('Results'))]
+      view.dispatch(view.state.tr.replaceWith(0, original.content.size, nodes))
+      trigger.click()
+      const panel = document.querySelector('.document-outline')
+      const toolbar = document.querySelector('.ProseMirror-menubar').getBoundingClientRect()
+      const anchored = panel.getBoundingClientRect().top >= toolbar.bottom
+      const headings = [...panel.querySelectorAll('.outline-headings button')]
+        .map(button => button.textContent)
+      panel.querySelector('button').dispatchEvent(new KeyboardEvent('keydown',
+        { key: 'End', bubbles: true }))
+      const keyboard = document.activeElement.textContent === 'Document end'
+      document.activeElement.click()
+      const atEnd = view.state.selection.to >= view.state.doc.content.size - 1
+      const scrolled = window.scrollY > 500
+      trigger.click()
+      document.querySelector('.outline-edges button').click()
+      const atStart = view.state.selection.from === 1 && window.scrollY === 0
+      trigger.click()
+      document.querySelector('.document-outline').dispatchEvent(new KeyboardEvent('keydown',
+        { key: 'Escape', bubbles: true }))
+      const dismissed = !document.querySelector('.document-outline') &&
+        document.activeElement === trigger && trigger.getAttribute('aria-expanded') === 'false'
+      const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, original.content)
+      tr.setSelection(view.state.selection.constructor.near(tr.doc.resolve(1)))
+      view.dispatch(tr)
+      window.__hurmetBaseline = view.state.doc
+      return { empty, anchored, headings, keyboard, atEnd, scrolled, atStart, dismissed }
+    })()`, true)
+    assert.deepEqual(results.outline, {
+      empty: true, anchored: true, headings: ['Circuit analysis', 'Results'],
+      keyboard: true, atEnd: true, scrolled: true, atStart: true, dismissed: true
+    })
+    await win.webContents.executeJavaScript(
+      'document.querySelector(\'[aria-label="Document outline"]\').click()', true)
+    fs.writeFileSync(path.join(outDir, 'outline-empty.png'),
+      (await win.webContents.capturePage()).toPNG())
+    await win.webContents.executeJavaScript(
+      'document.querySelector(".editing-panel-close").click()', true)
+
     // Open a real document through the shell pipeline, unless asked to
     // capture the empty launch state. Always use a scratch copy: autosave
     // writes back to the opened path, and repo files must not be modified.

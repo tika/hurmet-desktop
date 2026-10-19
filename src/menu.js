@@ -16,6 +16,7 @@ import { lift, selectParentNode, toggleMark, wrapIn } from "prosemirror-commands
 import { schema, wrapInList } from "./schema"
 import { TextField, CodeField, TextAreaField, openPrompt } from "./prompt"
 import { openSelectPrompt } from "./selectprompt"
+import { openDocumentOutline } from "./outline"
 import { isInTable, addColumnBefore, deleteColumn,
   addRowBefore, deleteRow, mergeCells, splitCell,
   toggleHeaderColumn, CellSelection,
@@ -303,28 +304,10 @@ const removeHeader = () => {
 
 const navigate = () => {
   return new MenuItem({
-    title: "Navigate",
+    title: "Document outline",
     icon: hurmetIcons.navicon,
     run(state, _, view) {
-      // Get an array of the h1 nodes
-      const buttons = [{ textContent: "Top", pos: 0 }]
-      const bottom = view.dom.getBoundingClientRect().bottom - 320
-      state.doc.nodesBetween(0, state.doc.content.size, function(node, pos) {
-        if (node.type.name === "heading" && (node.attrs.level === 1 || node.attrs.level === 2)) {
-          buttons.push({textContent: (node.attrs.level === 1)
-            ? node.textContent
-            : "\xa0\xa0\xa0\xa0" + node.textContent,
-            pos: pos})
-        }
-      })
-      buttons.push({ textContent: "Bottom", pos: bottom })
-      // Open a dialog box and populate with buttons
-      const callback = pos => {
-        const headingTop = view.coordsAtPos(pos).top
-        const boundingTop = view.dom.getBoundingClientRect().top
-        window.scrollTo(0, headingTop - boundingTop)
-      }
-      openSelectPrompt("Scroll to…", buttons, callback)
+      openDocumentOutline(view)
     }
   })
 }

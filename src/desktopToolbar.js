@@ -11,6 +11,10 @@ function button(item, label, text = false) {
     render(view) {
       const rendered = command.render(view)
       rendered.dom.setAttribute("aria-label", label)
+      if (label === "Document outline") {
+        rendered.dom.setAttribute("aria-haspopup", "dialog")
+        rendered.dom.setAttribute("aria-expanded", "false")
+      }
       return rendered
     }
   }

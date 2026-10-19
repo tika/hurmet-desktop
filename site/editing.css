@@ -1,0 +1,90 @@
+/* Editing controls use the system face independently of document typography. */
+.document-outline {
+  position: fixed;
+  z-index: 30;
+  box-sizing: border-box;
+  width: min(280px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgb(0 0 0 / 0.12);
+  border-radius: 12px;
+  background: #fff;
+  color: #242424;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.06), 0 12px 36px rgb(0 0 0 / 0.12);
+  font: 13px / 1.45 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+
+.editing-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px 8px;
+}
+
+.document-outline button {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  min-height: 32px;
+}
+
+.document-outline .editing-panel-close {
+  width: 32px;
+  font-size: 20px;
+}
+
+.outline-headings {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 8px 8px;
+}
+
+.outline-headings button {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 8px 12px;
+  overflow-wrap: anywhere;
+}
+
+.outline-headings button[aria-current] {
+  background: #edf3fa;
+  color: #145da8;
+  font-weight: 600;
+}
+
+.outline-headings p {
+  color: #626262;
+  margin: 8px 12px 16px;
+}
+
+.outline-edges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid #ededed;
+}
+
+.outline-edges button {
+  flex: 1;
+  padding: 8px;
+  white-space: nowrap;
+}
+
+@media (hover: hover) {
+  .document-outline button:hover { background: #f0f0f0; }
+}
+
+.document-outline button:focus-visible {
+  outline: 2px solid #1769c2;
+  outline-offset: -2px;
+}
+
+@media print {
+  .document-outline { display: none; }
+}
