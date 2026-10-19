@@ -39334,6 +39334,7 @@ const codeJar = (editor, isMathPrompt) => {
   const listeners = [];
   let callback;
   let prev;
+  let destroyed = false;
 
   editor.setAttribute("contenteditable", "plaintext-only");
   editor.setAttribute("spellcheck", "false");
@@ -39352,6 +39353,7 @@ const codeJar = (editor, isMathPrompt) => {
   if (isLegacy) editor.setAttribute("contenteditable", "true");
 
   const debounceHighlight = debounce(() => {
+    if (destroyed) return
     const pos = save();
     doHighlight(editor);
     restore(pos);
@@ -39715,6 +39717,7 @@ const codeJar = (editor, isMathPrompt) => {
     save,
     restore,
     destroy() {
+      destroyed = true;
       for (let [type, fn] of listeners) {
         editor.removeEventListener(type, fn);
       }

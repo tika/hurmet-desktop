@@ -17,7 +17,8 @@ async function main() {
   const files = listPackage(path.join(app, 'Contents/Resources/app.asar'))
   for (const file of ['/electron/main.cjs', '/electron/context-menu.cjs',
     '/electron/preload.cjs', '/electron/shell.css',
-    '/site/index.html', '/site/prosemirror.min.js', '/node_modules/ws/index.js']) {
+    '/site/index.html', '/site/prosemirror.min.js', '/site/editing.css',
+    '/node_modules/ws/index.js']) {
     assert.ok(files.includes(file), `Missing packaged file: ${file}`)
   }
 
