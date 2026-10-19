@@ -7,6 +7,12 @@ contextBridge.exposeInMainWorld('hurmetDesktop', {
   saveFile: (content, saveAs) => ipcRenderer.invoke('hurmet:save-file', content, saveAs),
   setMenus: (menus) => ipcRenderer.send('hurmet:set-menus', menus),
   updateMenus: (states) => ipcRenderer.send('hurmet:update-menus', states),
+  showContextMenu: (id, items) => ipcRenderer.send('hurmet:show-context-menu', id, items),
+  onContextMenu: (callback) => {
+    const listener = (_event, request) => callback(request)
+    ipcRenderer.on('hurmet:context-menu', listener)
+    return () => ipcRenderer.removeListener('hurmet:context-menu', listener)
+  },
   onMenuCommand: (callback) => {
     const listener = (_event, id) => callback(id)
     ipcRenderer.on('hurmet:menu-command', listener)

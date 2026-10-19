@@ -59237,6 +59237,38 @@ function desktopMenu(r) {
     ] }
   ];
 
+  const findMenu = label => menus.find(menu => menu.label === label).submenu;
+  const findItem = id => {
+    const find = items => {
+      for (const item of items) {
+        if (item.id === id) { return item }
+        if (item.submenu) {
+          const found = find(item.submenu);
+          if (found) { return found }
+        }
+      }
+    };
+    return find(menus)
+  };
+  const contextItems = [
+    { ...findItem("toggleLink"), label: "Add or Remove Link…" },
+    separator,
+    { label: "Format", submenu: findMenu("Format").slice(0, 8) },
+    { label: "Paragraph", submenu: [
+      ...findMenu("Format").find(item => item.label === "Text Style").submenu,
+      separator,
+      findItem("wrapBulletList"), findItem("wrapOrderedList"), findItem("wrapBlockQuote"),
+      findMenu("Format").find(item => item.label === "Block")
+    ] },
+    { label: "Insert", submenu: findMenu("Insert") },
+    { label: "Calculation", submenu: findMenu("Calculation") },
+    { label: "Table", submenu: findMenu("Table") },
+    separator,
+    findItem("undo"), findItem("redo"),
+    separator,
+    findItem("copyAsMarkdown"), findItem("copyAsGFM")
+  ];
+
   return new Plugin({
     view(view) {
       const bridge = window.hurmetDesktop;
@@ -59246,6 +59278,44 @@ function desktopMenu(r) {
         return active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ||
           (active?.isContentEditable && active !== view.dom)
       };
+      let contextEvent = null;
+      const rememberContext = event => { contextEvent = event; };
+      document.addEventListener("contextmenu", rememberContext, true);
+      const describe = items => items.map(item => {
+        if (item.submenu) { return { ...item, submenu: describe(item.submenu) } }
+        const spec = commands.get(item.id);
+        if (!spec) { return item }
+        return {
+          ...item,
+          enabled: (!spec.select || !!spec.select(view.state)) &&
+            (!spec.enable || !!spec.enable(view.state)),
+          checked: !!(spec.active && spec.active(view.state))
+        }
+      });
+      const unsubscribeContext = bridge.onContextMenu(request => {
+        const event = contextEvent;
+        contextEvent = null;
+        const target = event?.target || (request.source === "keyboard"
+          ? document.activeElement : document.elementFromPoint(request.x, request.y));
+        const field = target?.closest('input, textarea, [contenteditable="true"]');
+        if (!target || !view.dom.contains(target) || (field && field !== view.dom)) {
+          bridge.showContextMenu(request.id, []);
+          return
+        }
+        if (request.source !== "keyboard") {
+          const hit = view.posAtCoords({
+            left: event?.clientX ?? request.x, top: event?.clientY ?? request.y
+          });
+          const { from, to, empty } = view.state.selection;
+          if (hit && (empty || hit.pos < from || hit.pos > to)) {
+            view.dispatch(view.state.tr.setSelection(
+              TextSelection.near(view.state.doc.resolve(hit.pos))));
+          }
+        }
+        const items = contextItems.filter(item =>
+          item.label !== "Table" || isInTable(view.state));
+        bridge.showContextMenu(request.id, describe(items));
+      });
       const unsubscribe = bridge.onMenuCommand(id => {
         if ((id === "undo" || id === "redo") && editingField()) {
           document.execCommand(id);
@@ -59279,6 +59349,8 @@ function desktopMenu(r) {
       update();
       return { update, destroy() {
         unsubscribe();
+        unsubscribeContext();
+        document.removeEventListener("contextmenu", rememberContext, true);
         document.removeEventListener("focusin", update);
         document.removeEventListener("focusout", update);
       } }

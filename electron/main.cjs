@@ -19,6 +19,7 @@ const fs = require('fs')
 const fsp = require('fs/promises')
 const { pathToFileURL } = require('url')
 const { WebSocketServer } = require('ws')
+const contextMenu = require('./context-menu.cjs')
 
 const siteDir = path.join(__dirname, '..', 'site')
 
@@ -26,6 +27,8 @@ let win = null
 let currentFile = null
 let wss = null
 let wsPort = 0
+let contextRequest = null
+let contextRequestId = 0
 
 // ---------------------------------------------------------------
 // Font configuration
@@ -239,6 +242,15 @@ function createWindow() {
     return { action: 'deny' }
   })
 
+  win.webContents.on('context-menu', (_event, params) => {
+    const id = ++contextRequestId
+    contextRequest = { id, params }
+    const zoom = win.webContents.getZoomFactor()
+    win.webContents.send('hurmet:context-menu', {
+      id, source: params.menuSourceType, x: params.x / zoom, y: params.y / zoom
+    })
+  })
+
   // Hide web-only chrome and apply the shell's chrome styling.
   const shellCss = fs.readFileSync(path.join(__dirname, 'shell.css'), 'utf8')
   win.webContents.on('did-finish-load', () => {
@@ -400,6 +412,14 @@ ipcMain.on('hurmet:update-menus', (event, states) => {
       if (item.type === 'checkbox') item.checked = state.checked
     }
   }
+})
+
+ipcMain.on('hurmet:show-context-menu', (event, id, items) => {
+  if (!win || win.isDestroyed() || event.sender !== win.webContents ||
+      contextRequest?.id !== id) return
+  const { params } = contextRequest
+  contextRequest = null
+  contextMenu(win, params, items).popup({ window: win, x: params.x, y: params.y })
 })
 
 // ---------------------------------------------------------------
