@@ -14,6 +14,7 @@
 
 const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, net, shell } = require('electron')
 const path = require('path')
+const os = require('os')
 const fs = require('fs')
 const fsp = require('fs/promises')
 const { pathToFileURL } = require('url')
@@ -25,6 +26,45 @@ let win = null
 let currentFile = null
 let wss = null
 let wsPort = 0
+
+// ---------------------------------------------------------------
+// Font configuration
+// ---------------------------------------------------------------
+// Optional per-user font overrides, read once at startup from
+// ~/.hurmet-desktop.json:
+//
+//   { "fonts": { "body": "Literata", "code": "Maple Mono" } }
+//
+// "body" sets the document and heading typeface; "code" sets code
+// blocks and calculation source zones. Absent keys, a missing file,
+// or malformed JSON all fall back to the app's defaults.
+function loadFontConfig() {
+  try {
+    const file = path.join(os.homedir(), '.hurmet-desktop.json')
+    const fonts = JSON.parse(fs.readFileSync(file, 'utf8')).fonts || {}
+    // Font names end up inside a CSS string, so drop quote characters.
+    const safe = (name) =>
+      typeof name === 'string' ? name.replace(/[\\"']/g, '').trim() : ''
+    return { body: safe(fonts.body), code: safe(fonts.code) }
+  } catch {
+    return {}
+  }
+}
+
+function fontOverrideCss({ body, code }) {
+  let css = ''
+  if (body) {
+    css += `.ProseMirror, .ProseMirror p, .ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6 { ` +
+      `font-family: "${body}", Calibri, 'Helvetica Neue', Arial, Cambria, sans-serif; }\n`
+  }
+  if (code) {
+    css += `.ProseMirror code, .ProseMirror pre, .ProseMirror pre code, .hmt-code { ` +
+      `font-family: "${code}", Consolas, "Liberation Mono", Courier, monospace; }\n`
+  }
+  return css
+}
+
+const fontCss = fontOverrideCss(loadFontConfig())
 
 // The site uses absolute asset paths and ES modules, so serve it over a
 // standard scheme rather than file://.
@@ -200,6 +240,7 @@ function createWindow() {
   const shellCss = fs.readFileSync(path.join(__dirname, 'shell.css'), 'utf8')
   win.webContents.on('did-finish-load', () => {
     win.webContents.insertCSS(shellCss)
+    if (fontCss) win.webContents.insertCSS(fontCss)
     win.webContents.executeJavaScript(
       "if (document.title === 'Hurmet.org') document.title = 'Untitled';" +
       'if (window.view) window.__hurmetBaseline = window.view.state.doc;' +
