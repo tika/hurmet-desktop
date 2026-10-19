@@ -11482,7 +11482,12 @@ const consolidate = arr => {
       }
     }
 
-    if (!rules.has(arr[0].type) || !rules.get(arr[0].type).isLeaf) {
+    // The loop above starts at i = 1, so any "null" nodes at the head of the
+    // array survive it and would later throw in nodeFromJSON.
+    while (arr.length > 0 && arr[0].type === "null") { arr.splice(0, 1); }
+
+    if (arr.length > 0 &&
+        (!rules.has(arr[0].type) || !rules.get(arr[0].type).isLeaf)) {
       consolidate(arr[0].content);
     }
   }
