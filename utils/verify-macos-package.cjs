@@ -50,27 +50,41 @@ async function main() {
     assert.ok(target, `Packaged editor window did not open:\n${logs}`)
     socket = new WebSocket(target.webSocketDebuggerUrl)
     await once(socket, 'open')
-    const result = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Packaged editor did not become ready')), 30000)
-      socket.on('message', data => {
-        const message = JSON.parse(data)
-        if (message.id === 1) { clearTimeout(timeout); resolve(message.result) }
+    let ready = false
+    let response
+    // The first page target may still be navigating. Poll from Node so a
+    // replaced renderer context cannot destroy an in-page readiness promise.
+    const deadline = Date.now() + 30000
+    while (Date.now() < deadline && !ready) {
+      const result = new Promise((resolve, reject) => {
+        const cleanup = () => {
+          clearTimeout(timeout)
+          socket.removeListener('message', onMessage)
+          socket.removeListener('error', onError)
+        }
+        const onMessage = data => {
+          const message = JSON.parse(data)
+          if (message.id === 1) { cleanup(); resolve(message) }
+        }
+        const onError = error => { cleanup(); reject(error) }
+        const timeout = setTimeout(() => {
+          cleanup()
+          reject(new Error(`Packaged editor stopped responding:\n${logs}`))
+        }, 5000)
+        socket.on('message', onMessage)
+        socket.once('error', onError)
       })
-      socket.once('error', error => { clearTimeout(timeout); reject(error) })
-    })
-    socket.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: {
-      expression: `new Promise(resolve => {
-        const check = () => {
-          if (!window.view) return setTimeout(check, 100)
-          resolve(!!window.hurmetDesktop &&
-            !!document.querySelector('.desktop-text-style') &&
-            getComputedStyle(document.querySelector('nav')).display === 'none')
-        }; check()
-      })`,
-      returnByValue: true,
-      awaitPromise: true
-    } }))
-    assert.equal((await result).result.value, true, `Packaged editor did not load:\n${logs}`)
+      socket.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: {
+        expression: `!!window.view && !!window.hurmetDesktop &&
+          !!document.querySelector('.desktop-text-style') &&
+          getComputedStyle(document.querySelector('nav')).display === 'none'`,
+        returnByValue: true
+      } }))
+      response = await result
+      ready = response.result?.result?.value === true
+      if (!ready) await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    assert.ok(ready, `Packaged editor did not load: ${JSON.stringify(response)}\n${logs}`)
     console.log('Universal app signature, bundled files, and editor launch verified.')
   } finally {
     socket?.terminate()
