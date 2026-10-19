@@ -6,6 +6,25 @@ The main Hurmet page is at [hurmet.org][1]. There is more information in the [ex
 
 Hurmet can also be run locally. It is a progressive web app, so it stores a copy of itself on your local drive. If you are offline, you can still open a browser, navigate to hurmet.org, and it will be there. So will the main documentation page.
 
+## Desktop builds and releases
+
+Use Node.js 22 and the pinned Yarn version (`corepack enable`, then `yarn install --immutable`). Run `yarn desktop` to open the app locally.
+
+On macOS, `yarn desktop:package` builds `release/Hurmet-<version>-universal.dmg` for both Apple Silicon and Intel Macs. The disk image includes the app and a shortcut to Applications. Run `yarn desktop:verify-package` to check its universal binary, code signature, bundled files, and editor launch.
+
+The [Release macOS workflow](https://github.com/tika/hurmet-desktop/actions/workflows/release-macos.yml) publishes a GitHub release automatically when a `v*` tag is pushed. The tag must match `package.json`'s version, such as `v0.1.1`. Update the version, commit and push it, then create and push the matching tag:
+
+```sh
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+The workflow runs lint and tests, builds and launches the packaged app, verifies the DMG, and attaches the DMG and SHA-256 checksums to the release. Tags containing a hyphen, such as `v0.2.0-beta.1`, produce prereleases. Re-running a tag's workflow replaces the release assets.
+
+You can also run the workflow manually from Actions to download a build artifact. Runs on a branch build the DMG without publishing a release; runs on a version tag publish it.
+
+Builds are ad-hoc signed, without Apple notarization, so macOS may require approval before opening a downloaded app. Developer ID signing and notarization are not configured.
+
 --------------------
 
 This repository contains the code used to create hurmet org. You are free to use this code or hurmet org under terms of the [MIT license][5].

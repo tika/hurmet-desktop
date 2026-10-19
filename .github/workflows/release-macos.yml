@@ -1,0 +1,103 @@
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and verify universal DMG
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          node <<'NODE'
+          const version = require('./package.json').version
+          if (process.env.GITHUB_REF_NAME !== `v${version}`) {
+            throw new Error(`Release tag must match package.json: v${version}`)
+          }
+          NODE
+
+      - name: Install dependencies
+        run: |
+          corepack enable
+          yarn install --immutable
+
+      - name: Lint and test
+        run: yarn test
+
+      - name: Build universal DMG
+        run: yarn desktop:package
+
+      - name: Verify packaged app and disk image
+        run: |
+          yarn desktop:verify-package
+          hdiutil verify release/*.dmg
+          cd release
+          shasum -a 256 ./*.dmg > SHA256SUMS
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: hurmet-macos-universal
+          path: |
+            release/*.dmg
+            release/SHA256SUMS
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: hurmet-macos-universal
+          path: release
+
+      - name: Verify artifact checksums
+        working-directory: release
+        run: sha256sum --check SHA256SUMS
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release/*.dmg release/SHA256SUMS --clobber
+          else
+            args=(--verify-tag --generate-notes --draft)
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              args+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" "${args[@]}" \
+              --title "Hurmet ${RELEASE_TAG#v}" \
+              release/*.dmg release/SHA256SUMS
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false
