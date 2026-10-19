@@ -1,5 +1,5 @@
 {
-  "appId": "io.github.tika.hurmet",
+  "appId": "io.capon.hurmet",
   "productName": "Hurmet",
   "artifactName": "Hurmet-${version}-${arch}.${ext}",
   "directories": {
