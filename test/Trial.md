@@ -46,12 +46,4 @@ sine wave, one can write the following code into a math zone:
 
 [^2]: When in doubt, scratch your head.
 
-[sin x]: ¢` draw()
-    title "sin x"
-    frame 250, 150
-    view -5, 5, -3
-    axes 2, 1, "labels"
-    strokewidth 2
-    plot sin(x), 51
-    text [1.6, 1.35], "sin x"
-end `
+[sin x]: draw()␤title "sin x"␤frame 250, 150␤view -5, 5, -3␤axes 2, 1, "labels"␤strokewidth 2␤plot sin(x), 51␤text [1.6, 1.35], "sin x"␤end
