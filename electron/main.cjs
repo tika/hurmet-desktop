@@ -54,8 +54,11 @@ function loadFontConfig() {
 function fontOverrideCss({ body, code }) {
   let css = ''
   if (body) {
+    // The override also cancels the upstream h1/h2 small-caps styling,
+    // which reads as all-uppercase under most text faces.
     css += `.ProseMirror, .ProseMirror p, .ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6 { ` +
-      `font-family: "${body}", Calibri, 'Helvetica Neue', Arial, Cambria, sans-serif; }\n`
+      `font-family: "${body}", Calibri, 'Helvetica Neue', Arial, Cambria, sans-serif; ` +
+      `font-variant: normal; letter-spacing: normal; }\n`
   }
   if (code) {
     css += `.ProseMirror code, .ProseMirror pre, .ProseMirror pre code, .hmt-code { ` +
