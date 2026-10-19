@@ -1,6 +1,7 @@
 import { Plugin, TextSelection } from "prosemirror-state"
 import { isInTable } from "prosemirror-tables"
 import { undoItem, redoItem, joinUpItem } from "prosemirror-menu"
+import { engineeringMenu } from "./engineeringMenu"
 
 // Reuse the editor's commands for both the native menus and the toolbar.
 // Only serializable menu descriptions cross the isolated preload bridge.
@@ -22,6 +23,7 @@ export function desktopMenu(r) {
     submenu: dropdown.content.map((command, index) =>
       item(`${prefix}-${index}`, command.spec.label || command.spec.title, command))
   })
+  const engineering = engineeringMenu(item)
   const menus = [
     { label: "File", submenu: [
       { id: "open", label: "Open…", accelerator: "CmdOrCtrl+O" },
@@ -78,6 +80,7 @@ export function desktopMenu(r) {
     { label: "Insert", submenu: [
       item("insertCalculation", "Calculation", r.insertCalclation, "Alt+C"),
       item("insertTeX", "TeX Equation", r.insertTeX),
+      engineering,
       separator,
       item("toggleLink", "Link…", r.toggleLink),
       item("imageUpload", "Image from File…", r.imageUpload),
@@ -158,8 +161,9 @@ export function desktopMenu(r) {
       findItem("wrapBulletList"), findItem("wrapOrderedList"), findItem("wrapBlockQuote"),
       findMenu("Format").find(item => item.label === "Block")
     ] },
-    { label: "Insert", submenu: findMenu("Insert") },
+    { label: "Insert", submenu: findMenu("Insert").filter(item => item !== engineering) },
     { label: "Calculation", submenu: findMenu("Calculation") },
+    engineering,
     { label: "Table", submenu: findMenu("Table") },
     separator,
     findItem("undo"), findItem("redo"),
@@ -195,7 +199,14 @@ export function desktopMenu(r) {
         contextEvent = null
         const target = event?.target || (request.source === "keyboard"
           ? document.activeElement : document.elementFromPoint(request.x, request.y))
-        const field = target?.closest('input, textarea, [contenteditable="true"]')
+        const field = target?.closest(
+          'input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')
+        if (field?.closest(".math-code")) {
+          bridge.showContextMenu(request.id, [
+            { ...engineering, submenu: describe(engineering.submenu.slice(0, 5)) }
+          ])
+          return
+        }
         if (!target || !view.dom.contains(target) || (field && field !== view.dom)) {
           bridge.showContextMenu(request.id, [])
           return
@@ -221,6 +232,13 @@ export function desktopMenu(r) {
         }
         const spec = commands.get(id)
         if (!spec) { return }
+        if (spec.insertText !== undefined && editingField()) {
+          const field = document.activeElement
+          const text = field.closest(".hurmet-calc") ? spec.calculationText :
+            field.closest(".hurmet-tex") ? spec.texText : spec.insertText
+          document.execCommand("insertText", false, text)
+          return
+        }
         const { state } = view
         if (spec.select && !spec.select(state)) { return }
         if (spec.enable && !spec.enable(state)) { return }

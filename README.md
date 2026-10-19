@@ -10,6 +10,8 @@ Hurmet can also be run locally. It is a progressive web app, so it stores a copy
 
 Use Node.js 22 and the pinned Yarn version (`corepack enable`, then `yarn install --immutable`). Run `yarn desktop` to open the app locally.
 
+Right-click in the editor for formatting, paragraph styles, inserts, calculation tools, and contextual table tools. The Engineering submenu includes EE and MechE symbols and unit notation, plus worked-problem and lab-note templates. Unit shortcuts insert readable notation in prose, quoted unit literals in Hurmet calculation source, and TeX markup in equation source. Engineering shortcuts are also available through Insert → Engineering in the native menu bar.
+
 On macOS, `yarn desktop:package` builds `release/Hurmet-<version>-universal.dmg` for both Apple Silicon and Intel Macs. The disk image includes the app and a shortcut to Applications. Run `yarn desktop:verify-package` to check its universal binary, code signature, bundled files, and editor launch.
 
 The [Release macOS workflow](https://github.com/tika/hurmet-desktop/actions/workflows/release-macos.yml) publishes a GitHub release automatically when a `v*` tag is pushed. The tag must match `package.json`'s version, such as `v0.1.1`. Update the version, commit and push it, then create and push the matching tag:

@@ -163,6 +163,87 @@ module.exports = async function smoke({ win, loadFile, wss }) {
       'window.view.state.doc.rangeHasMark(1, 5, window.view.state.schema.marks.strong)', true), true)
     context.getMenuItemById('toggleStrong').click()
     await new Promise(resolve => setTimeout(resolve, 150))
+    assert.ok(context.items.some(item => item.label === 'Engineering'))
+    const engineering = context.items.find(item => item.label === 'Engineering').submenu
+    const mechanicalSymbols = engineering.items.find(item => item.label === 'Mechanical Symbols')
+    mechanicalSymbols.submenu.items.find(item => item.label.startsWith('σ —')).click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(await win.webContents.executeJavaScript(
+      'window.view.state.doc.textContent.startsWith("σ")', true), true)
+    const mechanicalUnits = engineering.items.find(item => item.label === 'Mechanical Unit Notation')
+    mechanicalUnits.submenu.items.find(item => item.label === 'Moment / Torque — N·m').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(await win.webContents.executeJavaScript(
+      'window.view.state.doc.textContent.startsWith("σN·m")', true), true)
+
+    const sourcePoint = async text => win.webContents.executeJavaScript(`(() => {
+      const editor = document.querySelector('.math-code [contenteditable]')
+      editor.style.minWidth = '240px'
+      editor.focus()
+      document.execCommand('insertText', false, ${JSON.stringify(text)})
+      const rect = editor.getBoundingClientRect()
+      return { x: Math.round(rect.right - 8), y: Math.round((rect.top + rect.bottom) / 2) }
+    })()`, true)
+    native('insertCalculation').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    const calculationContext = await rightClick(await sourcePoint('r = 1'))
+    assert.equal(calculationContext.items.some(item => item.label === 'Format'), false)
+    const electricalUnits = calculationContext.items.find(item => item.label === 'Engineering')
+      .submenu.items.find(item => item.label === 'Electrical Unit Notation')
+    electricalUnits.submenu.items.find(item => item.label === 'Resistance — Ω').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector(".math-code [contenteditable]").textContent', true), "r = 1 'ohm'")
+    await win.webContents.executeJavaScript(`(() => {
+      const editor = document.querySelector('.math-code [contenteditable]')
+      document.execCommand('insertText', false, ' = ?? ohm')
+      editor.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    })()`, true)
+    assert.equal(await win.webContents.executeJavaScript(`(() => {
+      let valid = false
+      window.view.state.doc.descendants(node => {
+        if (node.type.name === 'calculation' && node.attrs.name === 'r') {
+          valid = !node.attrs.error && !!node.attrs.value
+        }
+      })
+      return valid
+    })()`, true), true)
+
+    native('insertTeX').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    const texContext = await rightClick(await sourcePoint('x = 1'))
+    const texUnits = texContext.items.find(item => item.label === 'Engineering')
+      .submenu.items.find(item => item.label === 'Mechanical Unit Notation')
+    texUnits.submenu.items.find(item => item.label === 'Stress / Pressure — MPa').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector(".math-code [contenteditable]").textContent', true),
+      'x = 1\\,\\text{MPa}')
+    await win.webContents.executeJavaScript(
+      'document.querySelector(".math-code [contenteditable]").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))', true)
+
+    await win.webContents.executeJavaScript(`(() => {
+      const view = window.view
+      const tr = view.state.tr.replaceWith(0, view.state.doc.content.size,
+        window.__hurmetSmokeInitialDoc.content)
+      tr.setSelection(view.state.selection.constructor.near(tr.doc.resolve(1)))
+      view.dispatch(tr)
+    })()`, true)
+    native('worked-problem').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.deepEqual(await win.webContents.executeJavaScript(
+      '[...document.querySelectorAll("#editor-content h3")].slice(0, 5).map(node => node.textContent)',
+      true), ['Given', 'Find', 'Assumptions', 'Working', 'Result'])
+    assert.equal(await win.webContents.executeJavaScript(
+      'window.view.state.selection.$from.parent.type.name', true), 'paragraph')
+    results.engineeringContextWorks = true
+    await win.webContents.executeJavaScript(`(() => {
+      const view = window.view
+      const tr = view.state.tr.replaceWith(0, view.state.doc.content.size,
+        window.__hurmetSmokeInitialDoc.content)
+      tr.setSelection(view.state.selection.constructor.create(tr.doc, 1, 5))
+      view.dispatch(tr)
+    })()`, true)
     const outsideSelection = await win.webContents.executeJavaScript(`(() => {
       const rect = window.view.coordsAtPos(window.view.state.doc.firstChild.nodeSize + 1)
       return { x: Math.round(rect.left + 1), y: Math.round((rect.top + rect.bottom) / 2) }

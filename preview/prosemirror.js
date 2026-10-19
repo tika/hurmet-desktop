@@ -59104,6 +59104,110 @@ function buildMenuItems(schema) {
   return r
 }
 
+// Display notation in prose; insert Hurmet unit literals or TeX markup when
+// the same command is used inside an equation's source editor.
+const electricalUnits = [
+  ["Voltage", "V"], ["Voltage", "mV"], ["Voltage", "kV"],
+  ["Current", "A"], ["Current", "mA"], ["Current", "µA"],
+  ["Resistance", "Ω", "ohm"], ["Resistance", "kΩ", "kΩ"],
+  ["Resistance", "MΩ", "MΩ"],
+  ["Capacitance", "µF"], ["Capacitance", "nF"], ["Capacitance", "pF"],
+  ["Inductance", "mH"], ["Inductance", "µH"],
+  ["Frequency", "Hz"], ["Frequency", "kHz"], ["Frequency", "MHz"],
+  ["Power", "W"], ["Charge", "C"]
+];
+const mechanicalUnits = [
+  ["Length", "m"], ["Length", "mm"], ["Area", "mm²", "mm^2"],
+  ["Second Moment of Area", "mm⁴", "mm^4"],
+  ["Force", "N"], ["Force", "kN"], ["Moment / Torque", "N·m", "N*m"],
+  ["Stress / Pressure", "MPa"], ["Elastic Modulus", "GPa"],
+  ["Mass", "kg"], ["Density", "kg/m³", "kg/m^3"],
+  ["Velocity", "m/s"], ["Acceleration", "m/s²", "m/s^2"],
+  ["Angular Speed", "rad/s"], ["Temperature", "°C"], ["Temperature", "K"],
+  ["Energy", "J"]
+];
+
+function insertText(text, calculationText = text, texText = text) {
+  return new MenuItem({
+    label: text,
+    insertText: text,
+    calculationText,
+    texText,
+    enable: state => state.selection.$from.parent.inlineContent,
+    run(state, dispatch) {
+      dispatch(state.tr.insertText(text).scrollIntoView());
+    }
+  })
+}
+
+function noteTemplate(sections) {
+  return new MenuItem({
+    label: "Note template",
+    enable: state => state.selection.$from.depth <= 1,
+    run(state, dispatch) {
+      const { heading, paragraph } = state.schema.nodes;
+      const nodes = sections.flatMap(label => [
+        heading.create({ level: 3 }, state.schema.text(label)), paragraph.create()
+      ]);
+      const from = state.selection.from;
+      const tr = state.tr.replaceSelection(new Slice(Fragment.fromArray(nodes), 0, 0));
+      let firstEntry = null;
+      const start = Math.min(from, tr.doc.content.size);
+      tr.doc.nodesBetween(start, tr.selection.to, (node, pos) => {
+        if (firstEntry === null && node.type === paragraph && node.content.size === 0) {
+          firstEntry = pos + 1;
+        }
+      });
+      if (firstEntry !== null) {
+        tr.setSelection(TextSelection.create(tr.doc, firstEntry));
+      }
+      dispatch(tr.scrollIntoView());
+    }
+  })
+}
+
+function engineeringMenu(register) {
+  const symbols = (id, label, entries) => ({
+    label,
+    submenu: entries.map(([symbol, name, tex], index) => register(
+      `${id}-${index}`, `${symbol} — ${name}`, insertText(symbol, symbol, tex)))
+  });
+  const units = (id, label, entries) => ({
+    label,
+    submenu: entries.map(([quantity, notation, code = notation], index) => register(
+      `${id}-${index}`, `${quantity} — ${notation}`,
+      insertText(notation, ` '${code}'`, `\\,\\text{${notation}}`)))
+  });
+  return { label: "Engineering", submenu: [
+    symbols("electrical-symbol", "Electrical Symbols", [
+      ["Ω", "Omega", "\\Omega"], ["φ", "Phi", "\\phi"],
+      ["ω", "Omega (lowercase)", "\\omega"], ["μ", "Mu", "\\mu"],
+      ["θ", "Theta", "\\theta"], ["∠", "Phase Angle", "\\angle"]
+    ]),
+    symbols("mechanical-symbol", "Mechanical Symbols", [
+      ["σ", "Sigma", "\\sigma"], ["ε", "Epsilon", "\\varepsilon"],
+      ["τ", "Tau", "\\tau"], ["ρ", "Rho", "\\rho"], ["ν", "Nu", "\\nu"],
+      ["θ", "Theta", "\\theta"], ["Δ", "Delta", "\\Delta"],
+      ["ω", "Omega", "\\omega"], ["α", "Alpha", "\\alpha"], ["β", "Beta", "\\beta"]
+    ]),
+    symbols("math-symbol", "Math Symbols", [
+      ["±", "Plus or Minus", "\\pm"], ["×", "Multiply", "\\times"],
+      ["·", "Dot Product / Multiply", "\\cdot"], ["≈", "Approximately Equal", "\\approx"],
+      ["≠", "Not Equal", "\\ne"], ["≤", "Less Than or Equal", "\\le"],
+      ["≥", "Greater Than or Equal", "\\ge"], ["∑", "Sum", "\\sum"],
+      ["∫", "Integral", "\\int"], ["∂", "Partial Derivative", "\\partial"],
+      ["∇", "Nabla", "\\nabla"], ["π", "Pi", "\\pi"], ["°", "Degree", "{}^{\\circ}"]
+    ]),
+    units("electrical-unit", "Electrical Unit Notation", electricalUnits),
+    units("mechanical-unit", "Mechanical Unit Notation", mechanicalUnits),
+    { type: "separator" },
+    register("worked-problem", "Worked Problem Template",
+      noteTemplate(["Given", "Find", "Assumptions", "Working", "Result"])),
+    register("lab-notes", "Lab Notes Template",
+      noteTemplate(["Objective", "Setup", "Measurements", "Analysis", "Conclusion"]))
+  ] }
+}
+
 // Reuse the editor's commands for both the native menus and the toolbar.
 // Only serializable menu descriptions cross the isolated preload bridge.
 function desktopMenu(r) {
@@ -59124,6 +59228,7 @@ function desktopMenu(r) {
     submenu: dropdown.content.map((command, index) =>
       item(`${prefix}-${index}`, command.spec.label || command.spec.title, command))
   });
+  const engineering = engineeringMenu(item);
   const menus = [
     { label: "File", submenu: [
       { id: "open", label: "Open…", accelerator: "CmdOrCtrl+O" },
@@ -59180,6 +59285,7 @@ function desktopMenu(r) {
     { label: "Insert", submenu: [
       item("insertCalculation", "Calculation", r.insertCalclation, "Alt+C"),
       item("insertTeX", "TeX Equation", r.insertTeX),
+      engineering,
       separator,
       item("toggleLink", "Link…", r.toggleLink),
       item("imageUpload", "Image from File…", r.imageUpload),
@@ -59260,8 +59366,9 @@ function desktopMenu(r) {
       findItem("wrapBulletList"), findItem("wrapOrderedList"), findItem("wrapBlockQuote"),
       findMenu("Format").find(item => item.label === "Block")
     ] },
-    { label: "Insert", submenu: findMenu("Insert") },
+    { label: "Insert", submenu: findMenu("Insert").filter(item => item !== engineering) },
     { label: "Calculation", submenu: findMenu("Calculation") },
+    engineering,
     { label: "Table", submenu: findMenu("Table") },
     separator,
     findItem("undo"), findItem("redo"),
@@ -59297,7 +59404,14 @@ function desktopMenu(r) {
         contextEvent = null;
         const target = event?.target || (request.source === "keyboard"
           ? document.activeElement : document.elementFromPoint(request.x, request.y));
-        const field = target?.closest('input, textarea, [contenteditable="true"]');
+        const field = target?.closest(
+          'input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]');
+        if (field?.closest(".math-code")) {
+          bridge.showContextMenu(request.id, [
+            { ...engineering, submenu: describe(engineering.submenu.slice(0, 5)) }
+          ]);
+          return
+        }
         if (!target || !view.dom.contains(target) || (field && field !== view.dom)) {
           bridge.showContextMenu(request.id, []);
           return
@@ -59323,6 +59437,13 @@ function desktopMenu(r) {
         }
         const spec = commands.get(id);
         if (!spec) { return }
+        if (spec.insertText !== undefined && editingField()) {
+          const field = document.activeElement;
+          const text = field.closest(".hurmet-calc") ? spec.calculationText :
+            field.closest(".hurmet-tex") ? spec.texText : spec.insertText;
+          document.execCommand("insertText", false, text);
+          return
+        }
         const { state } = view;
         if (spec.select && !spec.select(state)) { return }
         if (spec.enable && !spec.enable(state)) { return }
