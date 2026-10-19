@@ -13,3 +13,4 @@ site/prosemirror.min.js
 site/demo.min.js
 utils/ECB Exchange Rates.xml
 utils/hurmet.cjs
+release/

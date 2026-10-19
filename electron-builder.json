@@ -1,0 +1,30 @@
+{
+  "appId": "io.github.tika.hurmet",
+  "productName": "Hurmet",
+  "artifactName": "Hurmet-${version}-${arch}.${ext}",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "electron/main.cjs",
+    "electron/preload.cjs",
+    "electron/shell.css",
+    "site/**/*",
+    "LICENSE"
+  ],
+  "mac": {
+    "target": [{ "target": "dmg", "arch": ["universal"] }],
+    "category": "public.app-category.productivity",
+    "icon": "site/images/H-1024.png",
+    "identity": "-",
+    "notarize": false
+  },
+  "dmg": {
+    "title": "Hurmet ${version}",
+    "contents": [
+      { "x": 130, "y": 180, "type": "file" },
+      { "x": 410, "y": 180, "type": "link", "path": "/Applications" }
+    ]
+  },
+  "publish": null
+}
