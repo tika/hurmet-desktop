@@ -156,7 +156,7 @@ ipcMain.handle('hurmet:write-file', async (_event, content) => {
 })
 
 ipcMain.handle('hurmet:save-file', async (event, content, saveAs) => {
-  if (!win || event.sender !== win.webContents) return null
+  if (!win || win.isDestroyed() || event.sender !== win.webContents) return null
   try {
     let destination = currentFile
     if (saveAs || !destination) {

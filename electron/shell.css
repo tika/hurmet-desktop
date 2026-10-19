@@ -1,99 +1,183 @@
-/* Hurmet Desktop shell chrome.
- *
- * Loaded by electron/main.cjs on top of the site's own stylesheet. This
- * styles only the app chrome — menu bar, dropdown menus — never the
- * document, whose typography is the product's own print design.
+/* Desktop chrome only; the document keeps Hurmet's print typography.
+ * #editor gives overrides precedence over the site's styles, which load
+ * after Electron inserts this stylesheet.
  */
-
-/* ---- Toolbar ---------------------------------------------------------- */
-/* The ProseMirror menu bar doubles as the native Mac toolbar: it drags the
-   window (hiddenInset title bar) and its left padding clears the traffic
-   lights. It uses the platform UI font, distinct from the document face. */
-
-.ProseMirror-menubar {
-  -webkit-app-region: drag;
-  -webkit-user-select: none;
-  user-select: none;
-  padding: 10px 16px 8px 78px !important;
-  background: #f6f6f6;
-  color: #444;
-  border-bottom: 1px solid #e2e2e2;
-  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
-  font-size: 13px;
-}
-
-.ProseMirror-menubar * {
-  -webkit-app-region: no-drag;
-}
-
-.ProseMirror-menubar .ProseMirror-menuitem button {
-  padding: 4px 6px;
-  min-width: 24px;
-  min-height: 24px;
-  border-radius: 5px;
-}
-
-.ProseMirror-menubar .ProseMirror-menuitem button:hover {
-  background: rgb(0 0 0 / 0.06);
-}
-
-/* The math-insert buttons are styled upstream as a segmented control with
-   hard 1px borders and oversized glyphs. In the native toolbar they get the
-   same treatment as every other button. */
-.ProseMirror-menubar button.math-button,
-.ProseMirror-menubar button.mb-left,
-.ProseMirror-menubar button.math-dropdown,
-.ProseMirror-menubar button.md-right {
-  border: none;
-  margin-left: 0;
-  font-size: 13px;
-  padding: 4px 6px;
-  min-width: 24px;
-  min-height: 24px;
-  border-radius: 5px;
-}
-
-.ProseMirror-menubar .ProseMirror-menu-active {
-  background: rgb(0 0 0 / 0.12);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .ProseMirror-menubar .ProseMirror-menuitem button {
-    transition: background-color 120ms ease-out, color 120ms ease-out;
-  }
-}
-
-/* ---- Dropdown and submenu panels -------------------------------------- */
-
-.ProseMirror-menu-dropdown-menu,
-.ProseMirror-menu-submenu {
-  background: #fff;
-  color: #333;
-  border: 1px solid rgb(0 0 0 / 0.12);
-  border-radius: 8px;
-  padding: 4px;
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.08),
-    0 8px 24px rgb(0 0 0 / 0.14);
-}
-
-.ProseMirror-menu-dropdown-item {
-  padding: 5px 12px 5px 8px;
-  border-radius: 4px;
-}
-
-.ProseMirror-menu-dropdown-item:hover {
-  background: rgb(0 0 0 / 0.07);
-}
-
-.ProseMirror-menu-dropdown-menu .ProseMirror-menu-disabled,
-.ProseMirror-menu-submenu .ProseMirror-menu-disabled {
-  opacity: 0.4;
-}
-
-/* Web-only chrome, hidden for the desktop app. */
 nav,
 #promotion,
 #copyright {
   display: none !important;
+}
+
+@media screen {
+  body article {
+    max-width: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  body #editor {
+    width: auto;
+    padding: 0;
+    margin-bottom: 0 !important;
+    border: 0;
+    border-radius: 0;
+  }
+
+  #editor .ProseMirror-setup {
+    box-sizing: border-box;
+    max-width: 720px;
+    min-height: calc(100vh - 56px);
+    margin: 0 auto;
+    padding: 24px 24px 80px;
+    white-space: pre-wrap;
+  }
+}
+
+#editor .ProseMirror-menubar {
+  -webkit-app-region: drag;
+  user-select: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  position: sticky;
+  inset-block-start: 0;
+  min-height: 56px;
+  padding: 10px 16px 10px 78px;
+  background: #f7f7f7;
+  color: #424242;
+  border-bottom: 1px solid #e2e2e2;
+  border-radius: 0;
+  font: 13px / 1.2 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+
+#editor .ProseMirror-menubar * {
+  -webkit-app-region: no-drag;
+}
+
+#editor .ProseMirror-menubar > .ProseMirror-menuitem {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+/* Whitespace groups the tools without a row of divider lines. */
+#editor .ProseMirror-menuseparator {
+  width: 12px;
+  border: 0;
+  margin: 0;
+}
+
+#editor .ProseMirror-menubar button,
+#editor .desktop-text-style {
+  box-sizing: border-box;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+#editor .ProseMirror-menubar .ProseMirror-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#editor .ProseMirror-icon svg {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+
+#editor .desktop-text-style {
+  min-width: 130px;
+  background: #ededed;
+}
+
+#editor .ProseMirror-menu-dropdown-wrap {
+  padding: 0;
+}
+
+#editor button.ProseMirror-menu-dropdown {
+  padding-inline-end: 22px;
+}
+
+#editor .ProseMirror-menu-dropdown::after {
+  inset-inline-end: 8px;
+  border-width: 3px 3px 0;
+}
+
+#editor .ProseMirror-menubar button:focus-visible,
+#editor .desktop-text-style:focus-visible {
+  outline: 2px solid #1769c2;
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  #editor .ProseMirror-menubar button:not([aria-disabled="true"]):hover {
+    background: #e8e8e8;
+  }
+}
+
+#editor .ProseMirror-menubar .ProseMirror-menu-active {
+  background: #dedede;
+  color: #171717;
+}
+
+#editor .ProseMirror-menubar .ProseMirror-menu-disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#editor .ProseMirror-menu-dropdown-menu,
+#editor .ProseMirror-menu-submenu {
+  background: #fff;
+  color: #333;
+  border: 1px solid rgb(0 0 0 / 0.12);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 8px 24px rgb(0 0 0 / 0.14);
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+
+#editor .ProseMirror-menu-dropdown-menu {
+  inset-block-start: calc(100% + 4px);
+  inset-inline-end: 0;
+  min-width: 190px;
+}
+
+#editor .ProseMirror-menu-dropdown-item {
+  padding: 0;
+  border-radius: 6px;
+}
+
+#editor .ProseMirror-menu-dropdown-item button {
+  width: 100%;
+  padding: 6px 12px;
+  text-align: start;
+}
+
+@media (max-width: 700px) {
+  #editor .ProseMirror-menubar {
+    column-gap: 2px;
+  }
+
+  #editor .ProseMirror-menuseparator {
+    width: 4px;
+  }
+
+  #editor .desktop-text-style {
+    min-width: 112px;
+  }
+
+  #editor .ProseMirror-menu-dropdown-menu {
+    inset-inline-start: 0;
+    inset-inline-end: auto;
+  }
 }

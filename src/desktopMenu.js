@@ -19,7 +19,7 @@ export function desktopMenu(r) {
   const submenu = (label, dropdown, prefix) => ({
     label,
     submenu: dropdown.content.map((command, index) =>
-      item(`${prefix}-${index}`, command.spec.label, command))
+      item(`${prefix}-${index}`, command.spec.label || command.spec.title, command))
   })
   const menus = [
     { label: "File", submenu: [

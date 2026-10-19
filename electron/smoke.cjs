@@ -73,9 +73,12 @@ module.exports = async function smoke({ win, loadFile, wss }) {
     results.webChromeHidden = await win.webContents.executeJavaScript(
       'getComputedStyle(document.querySelector("nav")).display === "none"', true)
 
+    await win.webContents.executeJavaScript(
+      'void (window.__hurmetSmokeInitialDoc = window.view.state.doc)', true)
     const native = id => Menu.getApplicationMenu().getMenuItemById(id)
     assert.ok(native('saveFileAs'), 'Save As is available in the native File menu')
     assert.ok(native('insertCalculation'), 'Calculations are available in the native Insert menu')
+    assert.equal(native('table-style-0').label, 'Grid')
     assert.equal(native('saveFile').enabled, true)
     await win.webContents.executeJavaScript(`(() => {
       const view = window.view
@@ -108,26 +111,142 @@ module.exports = async function smoke({ win, loadFile, wss }) {
     await new Promise(resolve => setTimeout(resolve, 150))
     results.nativeMenusWork = true
 
+    results.toolbar = await win.webContents.executeJavaScript(`(() => {
+      const toolbar = document.querySelector('.ProseMirror-menubar')
+      const controls = [...toolbar.querySelectorAll('button, select')]
+        .filter(element => element.getClientRects().length)
+      return {
+        count: controls.length,
+        height: toolbar.getBoundingClientRect().height,
+        labels: controls.map(element => element.getAttribute('aria-label') || element.textContent),
+        rows: new Set(controls.map(element => Math.round(element.getBoundingClientRect().top))).size
+      }
+    })()`, true)
+    assert.equal(results.toolbar.rows, 1, 'Everyday tools fit in one row')
+    assert.ok(results.toolbar.count <= 8, 'Toolbar only shows everyday tools')
+    assert.ok(!results.toolbar.labels.some(label => ['File', 'Doc'].includes(label)))
+
+    // The style picker changes the document and tracks native menu changes.
+    await win.webContents.executeJavaScript(`(() => {
+      const select = document.querySelector('.desktop-text-style')
+      select.value = 'makeHead2'
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+    })()`, true)
+    assert.equal(await win.webContents.executeJavaScript(
+      'window.view.state.selection.$from.parent.attrs.level', true), 2)
+    native('makeParagraph').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector(".desktop-text-style").value', true), 'makeParagraph')
+
+    assert.equal(native('addRowBefore').enabled, false)
+    native('insertTable').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    await win.webContents.executeJavaScript(`(() => {
+      const view = window.view
+      let tablePos = null
+      view.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'table' && tablePos === null) tablePos = pos
+      })
+      view.dispatch(view.state.tr.setSelection(view.state.selection.constructor.near(
+        view.state.doc.resolve(tablePos + 4))))
+    })()`, true)
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(native('addRowBefore').enabled, true)
+    assert.equal(await win.webContents.executeJavaScript(
+      '!!document.querySelector("button.desktop-table-menu").getClientRects().length', true), true)
+    native('addRowBefore').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(await win.webContents.executeJavaScript(
+      'document.querySelector("#editor-content table").rows.length', true), 4)
+    results.contextualTableWorks = true
+
+    // Restore the original document for the visual checks.
+    await win.webContents.executeJavaScript(`(() => {
+      const view = window.view
+      const tr = view.state.tr.replaceWith(0, view.state.doc.content.size,
+        window.__hurmetSmokeInitialDoc.content)
+      tr.setSelection(view.state.selection.constructor.near(tr.doc.resolve(1)))
+      view.dispatch(tr)
+      delete window.__hurmetSmokeInitialDoc
+    })()`, true)
+    assert.equal(await win.webContents.executeJavaScript(
+      '!!document.querySelector("button.desktop-table-menu").getClientRects().length', true), false)
+
     const image = await win.webContents.capturePage()
     fs.writeFileSync(path.join(outDir, 'smoke-screenshot.png'), image.toPNG())
+    fs.writeFileSync(path.join(outDir, 'toolbar-preview.png'),
+      (await win.webContents.capturePage({ x: 0, y: 0, width: 1100, height: 56 })).toPNG())
 
-    // Open the File dropdown and capture the menu panel styling.
+    // Open the compact Insert dropdown and capture its panel styling.
     const opened = await win.webContents.executeJavaScript(
       `(() => {
         const btn = [...document.querySelectorAll('.ProseMirror-menubar button.ProseMirror-menu-dropdown')]
-          .find(b => b.textContent.trim().startsWith('File'))
+          .find(b => b.textContent.trim() === 'Insert')
         if (!btn) return false
         btn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
         return true
       })()`,
       true
     )
-    results.fileDropdownOpened = opened
+    results.insertDropdownOpened = opened
+    assert.equal(opened, true)
     if (opened) {
       await new Promise((r) => setTimeout(r, 400))
       const menuImage = await win.webContents.capturePage()
       fs.writeFileSync(path.join(outDir, 'dropdown-open.png'), menuImage.toPNG())
     }
+
+    await win.webContents.executeJavaScript(
+      'document.querySelector("button.desktop-insert-menu").click()', true)
+    results.layoutChecks = []
+    for (const [width, zoom] of [[540, 1], [1100, 2], [1440, 1]]) {
+      win.setSize(width, 820)
+      win.webContents.setZoomFactor(zoom)
+      await new Promise(resolve => setTimeout(resolve, 200))
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const viewport = await win.webContents.executeJavaScript('innerWidth', true)
+        if (Math.abs(viewport - win.getContentBounds().width / zoom) < 2) break
+        win.webContents.setZoomFactor(zoom)
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      assert.equal(win.webContents.getZoomFactor(), zoom)
+      const layout = await win.webContents.executeJavaScript(`(() => {
+        const toolbar = document.querySelector('.ProseMirror-menubar')
+        const controls = [...toolbar.querySelectorAll('button, select')]
+          .filter(element => element.getClientRects().length)
+        return {
+          width: innerWidth,
+          height: toolbar.getBoundingClientRect().height,
+          controlsFit: controls.every(element => {
+            const rect = element.getBoundingClientRect()
+            return rect.left >= 0 && rect.right <= innerWidth
+          }),
+          targetsSized: controls.every(element => {
+            const rect = element.getBoundingClientRect()
+            return rect.width >= 24 && rect.height >= 24
+          })
+        }
+      })()`, true)
+      assert.equal(layout.controlsFit, true, `Toolbar fits at ${width}px / ${zoom}x`)
+      assert.ok(Math.abs(layout.width - win.getContentBounds().width / zoom) < 2,
+        'Zoom changed the effective viewport')
+      assert.equal(layout.targetsSized, true)
+      results.layoutChecks.push({ windowWidth: width, zoom, ...layout })
+      const dropdownFits = await win.webContents.executeJavaScript(`(() => {
+        document.querySelector('button.desktop-insert-menu').click()
+        const rect = document.querySelector('.ProseMirror-menu-dropdown-menu')
+          .getBoundingClientRect()
+        const fits = rect.left >= 0 && rect.right <= innerWidth
+        document.querySelector('button.desktop-insert-menu').click()
+        return fits
+      })()`, true)
+      assert.equal(dropdownFits, true, `Insert menu fits at ${width}px / ${zoom}x`)
+      fs.writeFileSync(path.join(outDir, `toolbar-${width}-${zoom}x.png`),
+        (await win.webContents.capturePage()).toPNG())
+    }
+    win.setSize(1100, 820)
+    win.webContents.setZoomFactor(1)
 
     // Autosave regression test: edit the doc, then wait for the change to
     // reach disk through the shell's save pipeline.
@@ -178,6 +297,8 @@ module.exports = async function smoke({ win, loadFile, wss }) {
     }
     assert.ok(fs.readFileSync(saveAsPath, 'utf8').includes('SAVE'))
     assert.equal(fs.readFileSync(scratch, 'utf8'), original, 'Save uses the new destination')
+    await win.webContents.executeJavaScript(
+      'new Promise(resolve => { const check = () => window.__hurmetBaseline === window.view.state.doc ? resolve() : setTimeout(check, 50); check() })', true)
     dialog.showSaveDialog = originalDialog
     results.nativeSaveAsWorks = true
 

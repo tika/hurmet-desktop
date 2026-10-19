@@ -16,6 +16,7 @@ import { schema } from "./schema"
 import { dt } from "./constants"
 import { buildMenuItems } from "./menu"
 import { desktopMenu } from "./desktopMenu"
+import { desktopToolbar } from "./desktopToolbar"
 import { buildKeymap } from "./keymap"
 import { buildInputRules } from "./inputrules"
 import { CalcView, TexView, FootnoteView } from "./nodeviews"
@@ -37,7 +38,10 @@ function pmSetup(options) {
     keymap.keymap(baseKeymap),
 //    dropCursor(),
     gapCursor(),
-    menu.menuBar({ floating: true, content: items.fullMenu }),
+    menu.menuBar({
+      floating: !window.hurmetDesktop,
+      content: window.hurmetDesktop ? desktopToolbar(items) : items.fullMenu
+    }),
     history(),
     columnResizing(),
     tableEditing(),
