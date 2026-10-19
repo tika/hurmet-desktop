@@ -4,6 +4,8 @@
 // captures screenshots, and writes results to .amp/in/artifacts/.
 const fs = require('fs')
 const path = require('path')
+const assert = require('node:assert/strict')
+const { Menu, dialog } = require('electron')
 
 module.exports = async function smoke({ win, loadFile, wss }) {
   const outDir = path.join(__dirname, '..', '.amp', 'in', 'artifacts')
@@ -71,6 +73,41 @@ module.exports = async function smoke({ win, loadFile, wss }) {
     results.webChromeHidden = await win.webContents.executeJavaScript(
       'getComputedStyle(document.querySelector("nav")).display === "none"', true)
 
+    const native = id => Menu.getApplicationMenu().getMenuItemById(id)
+    assert.ok(native('saveFileAs'), 'Save As is available in the native File menu')
+    assert.ok(native('insertCalculation'), 'Calculations are available in the native Insert menu')
+    assert.equal(native('saveFile').enabled, true)
+    await win.webContents.executeJavaScript(`(() => {
+      const view = window.view
+      view.dispatch(view.state.tr.setSelection(view.state.selection.constructor.near(
+        view.state.doc.resolve(1))))
+    })()`, true)
+    native('toggleStrong').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(await win.webContents.executeJavaScript(
+      'window.view.state.storedMarks.some(mark => mark.type.name === "strong")', true), true)
+    assert.equal(native('toggleStrong').checked, true)
+    native('toggleStrong').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(native('toggleStrong').checked, false)
+
+    await win.webContents.executeJavaScript(
+      'window.view.dispatch(window.view.state.tr.insertText("NATIVE_UNDO_TEST ", 1))', true)
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(native('undo').enabled, true)
+    native('undo').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(await win.webContents.executeJavaScript(
+      'window.view.state.doc.textContent.includes("NATIVE_UNDO_TEST")', true), false)
+    assert.equal(native('redo').enabled, true)
+    native('redo').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    assert.equal(await win.webContents.executeJavaScript(
+      'window.view.state.doc.textContent.includes("NATIVE_UNDO_TEST")', true), true)
+    native('undo').click()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    results.nativeMenusWork = true
+
     const image = await win.webContents.capturePage()
     fs.writeFileSync(path.join(outDir, 'smoke-screenshot.png'), image.toPNG())
 
@@ -115,6 +152,34 @@ module.exports = async function smoke({ win, loadFile, wss }) {
         break
       }
     }
+
+    assert.equal(results.autosavePersisted, true, 'Autosave reaches the opened file')
+    const saveAsPath = path.join(outDir, 'scratch-save-as.md')
+    fs.rmSync(saveAsPath, { force: true })
+    const original = fs.readFileSync(scratch, 'utf8')
+    const originalDialog = dialog.showSaveDialog
+    dialog.showSaveDialog = async () => ({ canceled: true })
+    native('saveFileAs').click()
+    await new Promise(resolve => setTimeout(resolve, 200))
+    assert.equal(fs.readFileSync(scratch, 'utf8'), original)
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: saveAsPath })
+    native('saveFileAs').click()
+    for (let i = 0; i < 30 && !fs.existsSync(saveAsPath); i++) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    assert.ok(fs.existsSync(saveAsPath), 'Save As writes to the native dialog destination')
+    await new Promise(resolve => setTimeout(resolve, 200))
+    await win.webContents.executeJavaScript(
+      'window.view.dispatch(window.view.state.tr.insertText("SAVE_AS_TARGET ", 1))', true)
+    native('saveFile').click()
+    for (let i = 0; i < 30; i++) {
+      if (fs.readFileSync(saveAsPath, 'utf8').includes('SAVE')) break
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    assert.ok(fs.readFileSync(saveAsPath, 'utf8').includes('SAVE'))
+    assert.equal(fs.readFileSync(scratch, 'utf8'), original, 'Save uses the new destination')
+    dialog.showSaveDialog = originalDialog
+    results.nativeSaveAsWorks = true
 
     fs.writeFileSync(path.join(outDir, 'smoke-results.json'), JSON.stringify(results, null, 2))
     appQuit()

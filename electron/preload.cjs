@@ -3,5 +3,13 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('hurmetDesktop', {
-  writeFile: (content) => ipcRenderer.invoke('hurmet:write-file', content)
+  writeFile: (content) => ipcRenderer.invoke('hurmet:write-file', content),
+  saveFile: (content, saveAs) => ipcRenderer.invoke('hurmet:save-file', content, saveAs),
+  setMenus: (menus) => ipcRenderer.send('hurmet:set-menus', menus),
+  updateMenus: (states) => ipcRenderer.send('hurmet:update-menus', states),
+  onMenuCommand: (callback) => {
+    const listener = (_event, id) => callback(id)
+    ipcRenderer.on('hurmet:menu-command', listener)
+    return () => ipcRenderer.removeListener('hurmet:menu-command', listener)
+  }
 })

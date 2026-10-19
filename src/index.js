@@ -15,6 +15,7 @@ import { fixTables } from "prosemirror-tables"
 import { schema } from "./schema"
 import { dt } from "./constants"
 import { buildMenuItems } from "./menu"
+import { desktopMenu } from "./desktopMenu"
 import { buildKeymap } from "./keymap"
 import { buildInputRules } from "./inputrules"
 import { CalcView, TexView, FootnoteView } from "./nodeviews"
@@ -29,16 +30,18 @@ if (typeof window !== "undefined") {
 
 // Bundle together the plugins.
 function pmSetup(options) {
+  const items = buildMenuItems(options.schema)
   return [
     buildInputRules(options.schema),
     keymap.keymap(buildKeymap(options.schema, options.mapKeys)),
     keymap.keymap(baseKeymap),
 //    dropCursor(),
     gapCursor(),
-    menu.menuBar({ floating: true, content: buildMenuItems(options.schema).fullMenu }),
+    menu.menuBar({ floating: true, content: items.fullMenu }),
     history(),
     columnResizing(),
     tableEditing(),
+    ...(window.hurmetDesktop ? [desktopMenu(items)] : []),
     new state.Plugin({  props: {
       attributes: { class: "ProseMirror-setup pica", id: "editor-content" }
     } }),

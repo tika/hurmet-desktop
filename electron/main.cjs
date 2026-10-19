@@ -1,8 +1,7 @@
 // Hurmet Desktop — an Electron shell around the built Hurmet web app.
 //
-// This shell makes no changes to the upstream Hurmet sources. It loads the
-// built assets in `site/` over a custom protocol, and uses two upstream
-// pathways for file I/O:
+// Loads the built assets in `site/` over a custom protocol and bridges the
+// editor's commands to native application menus and file dialogs.
 //
 // - Open:  a native dialog picks a file; its markdown is pushed into the
 //          editor over a loopback WebSocket, which the page already listens
@@ -113,6 +112,31 @@ ipcMain.handle('hurmet:write-file', async (_event, content) => {
     await win.webContents.executeJavaScript(
       'window.__hurmetBaseline = window.view.state.doc', true
     ).catch(() => {})
+  }
+})
+
+ipcMain.handle('hurmet:save-file', async (event, content, saveAs) => {
+  if (!win || event.sender !== win.webContents) return null
+  try {
+    let destination = currentFile
+    if (saveAs || !destination) {
+      const result = await dialog.showSaveDialog(win, {
+        defaultPath: currentFile || 'Untitled.md',
+        filters: [{ name: 'Hurmet Markdown', extensions: ['md'] }]
+      })
+      if (result.canceled || !result.filePath) return null
+      destination = result.filePath
+    }
+    await fsp.writeFile(destination, content, 'utf8')
+    currentFile = destination
+    const fileName = path.basename(destination)
+    await win.webContents.executeJavaScript(
+      `(${installFileHandle.toString()})(${JSON.stringify(fileName)})`, true
+    )
+    return fileName
+  } catch (error) {
+    dialog.showErrorBox('Could Not Save', error.message)
+    return null
   }
 })
 
@@ -236,7 +260,22 @@ function installChangeTimestamp() {
 // ---------------------------------------------------------------
 // Native application menu
 // ---------------------------------------------------------------
-function buildMenu() {
+function buildMenu(editorMenus) {
+  const nativeItems = (items) => items.map((item) => {
+    if (item.submenu) return { label: item.label, submenu: nativeItems(item.submenu) }
+    if (item.role) return { role: item.role }
+    if (item.type === 'separator') return { type: 'separator' }
+    return {
+      id: item.id,
+      label: item.label,
+      accelerator: item.accelerator,
+      type: item.type || 'normal',
+      checked: !!item.checked,
+      click: item.id === 'open' ? openFileViaDialog : () => {
+        if (win && !win.isDestroyed()) win.webContents.send('hurmet:menu-command', item.id)
+      }
+    }
+  })
   const template = [
     ...(process.platform === 'darwin'
       ? [{
@@ -252,7 +291,7 @@ function buildMenu() {
           ]
         }]
       : []),
-    {
+    ...(editorMenus ? nativeItems(editorMenus) : [{
       label: 'File',
       submenu: [
         { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: openFileViaDialog },
@@ -261,7 +300,7 @@ function buildMenu() {
         process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }
       ]
     },
-    { role: 'editMenu' },
+    { role: 'editMenu' }]),
     {
       label: 'View',
       submenu: [
@@ -302,6 +341,22 @@ function buildMenu() {
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
+
+ipcMain.on('hurmet:set-menus', (event, menus) => {
+  if (win && event.sender === win.webContents) buildMenu(menus)
+})
+
+ipcMain.on('hurmet:update-menus', (event, states) => {
+  if (!win || event.sender !== win.webContents) return
+  const menu = Menu.getApplicationMenu()
+  for (const state of states) {
+    const item = menu?.getMenuItemById(state.id)
+    if (item) {
+      item.enabled = state.enabled
+      if (item.type === 'checkbox') item.checked = state.checked
+    }
+  }
+})
 
 // ---------------------------------------------------------------
 // Startup

@@ -589,7 +589,11 @@ ${savedPathData.body}`
     str += snapshot.content
   }
 
-  if (window.showOpenFilePicker && state.doc.attrs.saveIsValid && state.doc.attrs.fileHandle && !isSaveAs) {
+  if (window.hurmetDesktop) {
+    window.hurmetDesktop.saveFile(str, isSaveAs).then(fileName => {
+      if (fileName) window.__hurmetBaseline = state.doc
+    })
+  } else if (window.showOpenFilePicker && state.doc.attrs.saveIsValid && state.doc.attrs.fileHandle && !isSaveAs) {
     // Use the Chromium File System Access API, so users can click to save a document.
     const button = document.getElementsByClassName("ProseMirror-menubar").item(0).children[1]
     // Blink the button, so the author knows that a save takes place.

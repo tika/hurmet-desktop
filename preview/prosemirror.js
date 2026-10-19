@@ -57421,7 +57421,11 @@ ${savedPathData.body}`;
     str += snapshot.content;
   }
 
-  if (window.showOpenFilePicker && state.doc.attrs.saveIsValid && state.doc.attrs.fileHandle && !isSaveAs) {
+  if (window.hurmetDesktop) {
+    window.hurmetDesktop.saveFile(str, isSaveAs).then(fileName => {
+      if (fileName) window.__hurmetBaseline = state.doc;
+    });
+  } else if (window.showOpenFilePicker && state.doc.attrs.saveIsValid && state.doc.attrs.fileHandle && !isSaveAs) {
     // Use the Chromium File System Access API, so users can click to save a document.
     const button = document.getElementsByClassName("ProseMirror-menubar").item(0).children[1];
     // Blink the button, so the author knows that a save takes place.
@@ -59100,6 +59104,188 @@ function buildMenuItems(schema) {
   return r
 }
 
+// Reuse the editor's commands for both the native menus and the toolbar.
+// Only serializable menu descriptions cross the isolated preload bridge.
+function desktopMenu(r) {
+  const commands = new Map();
+  const item = (id, label, command, accelerator) => {
+    const spec = id === "saveFile" ? { ...command.spec, enable: () => true } : command.spec;
+    commands.set(id, spec);
+    return {
+      id,
+      label,
+      ...(accelerator ? { accelerator } : {}),
+      ...(command.spec.active ? { type: "checkbox", checked: false } : {})
+    }
+  };
+  const separator = { type: "separator" };
+  const submenu = (label, dropdown, prefix) => ({
+    label,
+    submenu: dropdown.content.map((command, index) =>
+      item(`${prefix}-${index}`, command.spec.label, command))
+  });
+  const menus = [
+    { label: "File", submenu: [
+      { id: "open", label: "Open…", accelerator: "CmdOrCtrl+O" },
+      item("saveFile", "Save", r.saveFile, "CmdOrCtrl+S"),
+      item("saveFileAs", "Save As…", r.saveFileAs, "CmdOrCtrl+Shift+S"),
+      separator,
+      { label: "Snapshots", submenu: [
+        item("takeSnapshot", "Take Snapshot…", r.takeSnapshot),
+        item("showDiff", "Show Changes…", r.showDiffMenuItem),
+        item("revertToSnapshot", "Revert to Snapshot…", r.revertToSnapshot),
+        item("deleteSnapshots", "Delete Snapshots…", r.deleteSnapshots)
+      ] },
+      separator,
+      item("print", "Print…", r.print, "CmdOrCtrl+P"),
+      separator,
+      { role: "close" }
+    ] },
+    { label: "Edit", submenu: [
+      item("undo", "Undo", undoItem, "CmdOrCtrl+Z"),
+      item("redo", "Redo", redoItem, "CmdOrCtrl+Shift+Z"),
+      separator,
+      { role: "cut" }, { role: "copy" }, { role: "paste" },
+      { role: "pasteAndMatchStyle" }, { role: "selectAll" },
+      separator,
+      item("copyAsMarkdown", "Copy as Markdown", r.copyAsMarkdown),
+      item("copyAsGFM", "Copy as GitHub Markdown", r.copyAsGFM)
+    ] },
+    { label: "Format", submenu: [
+      item("toggleStrong", "Bold", r.toggleStrong, "CmdOrCtrl+B"),
+      item("toggleEm", "Italic", r.toggleEm, "CmdOrCtrl+I"),
+      item("toggleUnderline", "Underline", r.toggleUnderline, "CmdOrCtrl+U"),
+      item("toggleStrikethru", "Strikethrough", r.toggleStrikethru),
+      item("toggleHighlight", "Highlight", r.toggleHighlight),
+      item("toggleCode", "Inline Code", r.toggleCode, "CmdOrCtrl+`"),
+      item("toggleSubscript", "Subscript", r.toggleSubscript, "CmdOrCtrl+,"),
+      item("toggleSuperscript", "Superscript", r.toggleSuperscript, "CmdOrCtrl+."),
+      separator,
+      { label: "Text Style", submenu: [
+        item("makeParagraph", "Paragraph", r.makeParagraph),
+        ...Array.from({ length: 6 }, (_, i) =>
+          item(`makeHead${i + 1}`, `Heading ${i + 1}`, r[`makeHead${i + 1}`])),
+        item("makeCodeBlock", "Code Block", r.makeCodeBlock)
+      ] },
+      item("wrapBulletList", "Bullet List", r.wrapBulletList),
+      item("wrapOrderedList", "Numbered List", r.wrapOrderedList),
+      item("tighten", "Tighten List", r.tighten),
+      item("wrapBlockQuote", "Block Quote", r.wrapBlockQuote),
+      submenu("Block", r.blockDropDown, "block"),
+      separator,
+      item("joinUp", "Join with Previous Block", joinUpItem),
+      ...r.blockMenu[0].slice(-2).map((command, index) =>
+        item(`block-action-${index}`, command.spec.title, command))
+    ] },
+    { label: "Insert", submenu: [
+      item("insertCalculation", "Calculation", r.insertCalclation, "Alt+C"),
+      item("insertTeX", "TeX Equation", r.insertTeX),
+      separator,
+      item("toggleLink", "Link…", r.toggleLink),
+      item("imageUpload", "Image from File…", r.imageUpload),
+      item("imageLink", "Image from URL…", r.imageLink),
+      item("insertTable", "Table", r.insertTable),
+      item("toggleComment", "Comment", r.toggleComment),
+      item("footnote", "Footnote", r.footnote),
+      item("toc", "Table of Contents…", r.toc),
+      separator,
+      item("insertHorizontalRule", "Horizontal Rule", r.insertHorizontalRule),
+      item("pageBreak", "Page Break", r.pageBreak)
+    ] },
+    { label: "Calculation", submenu: [
+      item("recalcAll", "Recalculate All", r.recalcAll),
+      item("toggleDisplayMode", "Display as Block", r.toggleDisplayMode),
+      item("rounding", "Rounding…", r.rounding),
+      item("convertTex2Calc", "Convert TeX to Calculation", r.convertTex2Calc),
+      item("convertCalc2Tex", "Convert Calculation to TeX", r.convertCalc2Tex),
+      separator,
+      item("letters", "Letters…", r.letters),
+      item("symbols", "Symbols…", r.symbols),
+      item("accents", "Accents…", r.accents),
+      item("display", "Display Selectors…", r.display),
+      { label: "Functions", submenu: r.functionsDropDown.content.map((command, index) =>
+        item(`function-${index}`, command.spec.title, command)) },
+      { label: "Quick Reference", submenu: r.hintDropDown.content.map((command, index) =>
+        item(`reference-${index}`, command.spec.title, command)) }
+    ] },
+    { label: "Table", submenu: [
+      item("addRowBefore", "Insert Row Above", r.addRowBefore),
+      item("addColumnBefore", "Insert Column Before", r.addColumnBefore),
+      item("toggleCellMerge", "Merge / Split Cells", r.toggleCellMerge),
+      item("toggleTableCaption", "Toggle Caption", r.toggleTableCaption),
+      separator,
+      item("alignColLeft", "Align Column Left", r.alignColLeft),
+      item("alignColCenter", "Align Column Center", r.alignColCenter),
+      item("alignColRight", "Align Column Right", r.alignColRight),
+      submenu("Style", r.tableStyle, "table-style"),
+      item("toggleSpreadsheet", "Toggle Spreadsheet", r.toggleSpreadsheet),
+      separator,
+      item("deleteRow", "Delete Row", r.deleteRow),
+      item("deleteColumn", "Delete Column", r.deleteColumn),
+      item("deleteTable", "Delete Table", r.deleteTable)
+    ] },
+    { label: "Document", submenu: [
+      submenu("Font Size", r.fontsize, "font-size"),
+      submenu("Page Size", r.pagesize, "page-size"),
+      submenu("Decimal Format", r.separators, "decimal-format"),
+      item("dateFormat", "Date Format…", r.dateFormat),
+      item("toggleDraftMode", "Draft Mode", r.toggleDraftMode),
+      separator,
+      item("insertHeader", "Insert Print Header…", r.insertHeader),
+      item("removeHeader", "Remove Print Header", r.removeHeader),
+      item("deleteComments", "Delete All Comments", r.deleteComments)
+    ] }
+  ];
+
+  return new Plugin({
+    view(view) {
+      const bridge = window.hurmetDesktop;
+      bridge.setMenus(menus);
+      const editingField = () => {
+        const active = document.activeElement;
+        return active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ||
+          (active?.isContentEditable && active !== view.dom)
+      };
+      const unsubscribe = bridge.onMenuCommand(id => {
+        if ((id === "undo" || id === "redo") && editingField()) {
+          document.execCommand(id);
+          return
+        }
+        const spec = commands.get(id);
+        if (!spec) { return }
+        const { state } = view;
+        if (spec.select && !spec.select(state)) { return }
+        if (spec.enable && !spec.enable(state)) { return }
+        view.focus();
+        spec.run(state, view.dispatch, view);
+      });
+      let previous = "";
+      const update = () => {
+        const states = Array.from(commands, ([id, spec]) => ({
+          id,
+          enabled: ((id === "undo" || id === "redo") && editingField()) ||
+            ((!spec.select || !!spec.select(view.state)) &&
+            (!spec.enable || !!spec.enable(view.state))),
+          checked: !!(spec.active && spec.active(view.state))
+        }));
+        const next = JSON.stringify(states);
+        if (next !== previous) {
+          bridge.updateMenus(states);
+          previous = next;
+        }
+      };
+      document.addEventListener("focusin", update);
+      document.addEventListener("focusout", update);
+      update();
+      return { update, destroy() {
+        unsubscribe();
+        document.removeEventListener("focusin", update);
+        document.removeEventListener("focusout", update);
+      } }
+    }
+  })
+}
+
 /**
 Input rules are regular expressions describing a piece of text
 that, when typed, causes something to happen. This might be
@@ -60706,16 +60892,18 @@ if (typeof window !== "undefined") {
 
 // Bundle together the plugins.
 function pmSetup(options) {
+  const items = buildMenuItems(options.schema);
   return [
     buildInputRules(options.schema),
     keymap(buildKeymap(options.schema, options.mapKeys)),
     keymap(baseKeymap),
 //    dropCursor(),
     gapCursor(),
-    menuBar({ floating: true, content: buildMenuItems(options.schema).fullMenu }),
+    menuBar({ floating: true, content: items.fullMenu }),
     history(),
     columnResizing(),
     tableEditing(),
+    ...(window.hurmetDesktop ? [desktopMenu(items)] : []),
     new Plugin({  props: {
       attributes: { class: "ProseMirror-setup pica", id: "editor-content" }
     } }),
