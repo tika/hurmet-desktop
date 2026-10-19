@@ -116,6 +116,14 @@ ipcMain.handle('hurmet:write-file', async (_event, content) => {
   }
 })
 
+// Triggers the page's own save. Its keymap binds save to Ctrl-s (the plain
+// control key, even on macOS), so send a control+S key event.
+function triggerInPageSave() {
+  if (!win || win.isDestroyed()) return
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 's', modifiers: ['ctrl'] })
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 's', modifiers: ['ctrl'] })
+}
+
 // ---------------------------------------------------------------
 // Window
 // ---------------------------------------------------------------
@@ -170,23 +178,53 @@ function createWindow() {
     win.webContents.insertCSS(shellCss)
     win.webContents.executeJavaScript(
       "if (document.title === 'Hurmet.org') document.title = 'Untitled';" +
-      'if (window.view) window.__hurmetBaseline = window.view.state.doc',
+      'if (window.view) window.__hurmetBaseline = window.view.state.doc;' +
+      `(${installChangeTimestamp.toString()})()`,
       true
     ).catch(() => {})
   })
 
+// Runs in the renderer. Records when the document last changed, so the main
+// process can debounce autosave.
+function installChangeTimestamp() {
+  if (window.__hurmetTimestampInstalled) return
+  window.__hurmetTimestampInstalled = true
+  window.__hurmetLastChangeAt = Date.now()
+  const view = window.view
+  const origDispatch = view.dispatch.bind(view)
+  view.dispatch = (tr) => {
+    window.__hurmetLastChangeAt = Date.now()
+    origDispatch(tr)
+  }
+}
+
   // Mirror the document's unsaved-changes state onto the native window:
   // the close-button dot and the proxy icon for the open file. The page's
-  // doc is immutable, so a changed identity means unsaved edits.
+  // doc is immutable, so a changed identity means unsaved edits. When
+  // changes have sat unsaved for a moment and a file is open, autosave by
+  // triggering the page's own save (synthetic Cmd-S, which its keymap binds
+  // to the in-place save path).
+  let saving = false
+  const AUTOSAVE_IDLE_MS = 2000
   const dirtyPoll = setInterval(async () => {
     if (!win || win.isDestroyed()) { clearInterval(dirtyPoll); return }
     try {
-      const dirty = await win.webContents.executeJavaScript(
-        '!!(window.view && window.__hurmetBaseline) && window.view.state.doc !== window.__hurmetBaseline',
+      const state = await win.webContents.executeJavaScript(
+        `({
+          dirty: !!(window.view && window.__hurmetBaseline) &&
+            window.view.state.doc !== window.__hurmetBaseline,
+          lastChangeAt: window.__hurmetLastChangeAt || 0
+        })`,
         true
       )
-      win.setDocumentEdited(dirty)
+      win.setDocumentEdited(state.dirty)
       if (currentFile) win.setRepresentedFilename(currentFile)
+      if (state.dirty && currentFile && !saving &&
+          Date.now() - state.lastChangeAt > AUTOSAVE_IDLE_MS) {
+        saving = true
+        triggerInPageSave()
+        setTimeout(() => { saving = false }, 1000)
+      }
     } catch { /* page mid-reload; ignore */ }
   }, 600)
 
@@ -218,6 +256,7 @@ function buildMenu() {
       label: 'File',
       submenu: [
         { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: openFileViaDialog },
+        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: triggerInPageSave },
         { type: 'separator' },
         process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }
       ]

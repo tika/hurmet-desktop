@@ -1,7 +1,7 @@
 // Smoke test for the Hurmet Desktop shell. Not part of the app.
 // Enabled by setting HURMET_DESKTOP_SMOKE=1. Loads a real document through
-// the shell's open pipeline, checks the editor state, captures a screenshot,
-// and writes results to .amp/in/artifacts/.
+// the shell's open pipeline, checks the editor state, verifies autosave,
+// captures screenshots, and writes results to .amp/in/artifacts/.
 const fs = require('fs')
 const path = require('path')
 
@@ -50,11 +50,14 @@ module.exports = async function smoke({ win, loadFile, wss }) {
       '!("serviceWorker" in navigator) || navigator.serviceWorker.controller === null', true)
 
     // Open a real document through the shell pipeline, unless asked to
-    // capture the empty launch state.
+    // capture the empty launch state. Always use a scratch copy: autosave
+    // writes back to the opened path, and repo files must not be modified.
     if (!process.env.HURMET_SMOKE_EMPTY) {
       const doc = process.env.HURMET_SMOKE_DOC ||
         path.join(__dirname, '..', 'test', 'Trial.md')
-      await loadFile(doc)
+      const scratch = path.join(outDir, 'scratch-open.md')
+      fs.copyFileSync(doc, scratch)
+      await loadFile(scratch)
       await new Promise((r) => setTimeout(r, 2500))
     }
 
@@ -67,13 +70,6 @@ module.exports = async function smoke({ win, loadFile, wss }) {
       '!!window.view.state.doc.attrs.fileHandle && window.view.state.doc.attrs.saveIsValid === true', true)
     results.webChromeHidden = await win.webContents.executeJavaScript(
       'getComputedStyle(document.querySelector("nav")).display === "none"', true)
-
-    // Diagnose any failed images (drawings render to <img> data URLs).
-    results.images = await win.webContents.executeJavaScript(
-      `[...document.querySelectorAll('#editor-content img')].slice(0, 5).map(img => ({
-        alt: img.alt, srcType: (img.src || '').slice(0, 30),
-        complete: img.complete, w: img.naturalWidth, h: img.naturalHeight
-      }))`, true)
 
     const image = await win.webContents.capturePage()
     fs.writeFileSync(path.join(outDir, 'smoke-screenshot.png'), image.toPNG())
@@ -94,6 +90,30 @@ module.exports = async function smoke({ win, loadFile, wss }) {
       await new Promise((r) => setTimeout(r, 400))
       const menuImage = await win.webContents.capturePage()
       fs.writeFileSync(path.join(outDir, 'dropdown-open.png'), menuImage.toPNG())
+    }
+
+    // Autosave regression test: edit the doc, then wait for the change to
+    // reach disk through the shell's save pipeline.
+    const scratch = path.join(outDir, 'scratch-autosave.md')
+    fs.copyFileSync(path.join(__dirname, '..', 'test', 'Trial.md'), scratch)
+    await loadFile(scratch)
+    await new Promise((r) => setTimeout(r, 1200))
+    await win.webContents.executeJavaScript(
+      "window.view.dispatch(window.view.state.tr.insertText('AUTOSAVE_MARKER ', 1))",
+      true
+    )
+    const t0 = Date.now()
+    results.autosavePersisted = false
+    while (Date.now() - t0 < 12000) {
+      await new Promise((r) => setTimeout(r, 700))
+      // The serializer escapes underscores ("AUTOSAVE\_MARKER").
+      if (fs.readFileSync(scratch, 'utf8').includes('AUTOSAVE')) {
+        results.autosavePersisted = true
+        results.autosaveSeconds = Math.round((Date.now() - t0) / 100) / 10
+        results.dirtyAfterAutosave = await win.webContents.executeJavaScript(
+          'window.view.state.doc !== window.__hurmetBaseline', true)
+        break
+      }
     }
 
     fs.writeFileSync(path.join(outDir, 'smoke-results.json'), JSON.stringify(results, null, 2))
